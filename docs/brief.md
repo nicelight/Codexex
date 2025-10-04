@@ -20,7 +20,7 @@
 
 1. Точно понимать, есть ли хотя бы одна запущенная задача во всех открытых вкладках Codex.
 2. Показывать системное уведомление «Все задачи завершены», когда счётчик активных задач падает с >0 до 0 (с антидребезгом).
-3. Минимум прав: `storage`, `notifications`, `alarms`, `scripting` и `host_permissions` для доменов Codex/ChatGPT.
+3. Минимум прав: `storage`, `notifications`, `alarms`, `scripting`, `tabs` и `host_permissions` для доменов Codex/ChatGPT.
 4. Приватность: **никаких внешних отправок** данных; только локальное хранение состояния в `chrome.storage.session`.
 
 **Нефункциональные требования (NFR)**
@@ -86,7 +86,6 @@
   "required": ["type", "tabId", "origin", "active", "count", "signals"],
   "properties": {
     "type": {"const": "TASKS_UPDATE"},
-    "tabId": {"type": "integer", "minimum": 1},
     "origin": {"type": "string", "format": "uri"},
     "active": {"type": "boolean"},
     "count": {"type": "integer", "minimum": 0},
@@ -106,7 +105,11 @@
 }
 ```
 
+> **Примечание:** идентификатор вкладки предоставляется background‑скрипту через `sender.tab.id`, поэтому в контракте сообщения поле `tabId` отсутствует и отдельное разрешение `tabs` для его вычисления в content‑script не требуется.
+
 ### 5.2. Хранимое агрегированное состояние у background
+
+Объект `state`, записываемый в `chrome.storage.session`, всегда содержит три верхнеуровневых поля: `tabs`, `lastTotal`, `debounce`.
 
 ```json
 {
@@ -188,7 +191,7 @@
 ## 8. Разрешения и политика безопасности
 
 * `host_permissions`: `https://*.openai.com/*` (уточнить производный домен Codex при интеграции).
-* `permissions`: `storage`, `notifications`, `alarms`, `scripting` (и `tabs` — только если используем `autoDiscardable` или хотим показывать названия вкладок).
+* `permissions`: `storage`, `notifications`, `alarms`, `scripting`, `tabs` (нужно для пингов вкладок и работы с `autoDiscardable`).
 * CSP: не вставляем инлайновые скрипты в страницу; работаем в изолированном мире контент‑скрипта.
 
 **Приватность:** никакой сети; все данные локально; можно включить «Diagnostic log» (в `storage.session`) для отладки, off by default.
@@ -219,7 +222,7 @@
 
 ## 10. Логика антидребезга и учёт вкладок
 
-* Background хранит `lastTotal` и `sinceZeroCandidateAt`.
+* Background хранит `state` с полями `tabs`, `lastTotal` и `debounce` (в `debounce.since` фиксируем момент кандидата на уведомление, в `debounce.ms` — длительность из настроек).
 * При каждом `TASKS_UPDATE` пересчитываем `totalActive` = сумма `tab.active`.
 * Если `totalActive == 0` и раньше было `>0`, стартуем `debounce` (`debounceMs` из настроек). По истечении проверяем ещё раз; если всё ещё `0` — уведомляем.
 * Состояние вкладки (tabId) очищается при событии `tabs.onRemoved`.
@@ -287,7 +290,7 @@
   "manifest_version": 3,
   "name": "Codex Tasks Watcher",
   "version": "0.1.0",
-  "permissions": ["storage", "notifications", "alarms", "scripting"],
+  "permissions": ["storage", "notifications", "alarms", "scripting", "tabs"],
   "host_permissions": ["https://*.openai.com/*"],
   "background": { "service_worker": "src/bg.js" },
   "content_scripts": [
@@ -319,7 +322,7 @@ function snapshot(){
     .map(([k]) => ({ detector:k, evidence:'hit' }));
   const active = signals.length > 0;
   const count = Math.max( active ? signals.length : 0, 0 );
-  chrome.runtime.sendMessage({ type:'TASKS_UPDATE', tabId: (chrome.devtools?.inspectedWindow?.tabId)||0, origin: location.origin, active, count, signals, ts: Date.now() });
+  chrome.runtime.sendMessage({ type:'TASKS_UPDATE', origin: location.origin, active, count, signals, ts: Date.now() });
 }
 
 const mo = new MutationObserver(() => snapshot());
@@ -333,7 +336,11 @@ snapshot();
 ## 19. Приложение: минимальная логика bg.js (псевдокод)
 
 ```js
-let lastTotal = 0; let zeroSince = 0; let debounceMs = 12000;
+const DEFAULT_STATE = {
+  tabs: {},
+  lastTotal: 0,
+  debounce: { ms: 12000, since: 0 }
+};
 
 chrome.runtime.onMessage.addListener((msg, sender) => {
   if (msg.type !== 'TASKS_UPDATE') return;
@@ -354,12 +361,16 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
         }
       }, debounceMs);
     }
-    lastTotal = total;
   });
 });
 
 chrome.alarms.create('codex-poll', { periodInMinutes: 1 });
-chrome.alarms.onAlarm.addListener(a => { if (a.name==='codex-poll') chrome.tabs.query({ url:'*://*.openai.com/*' }, tabs => tabs.forEach(t => chrome.tabs.sendMessage(t.id, { type:'PING' }))); });
+chrome.alarms.onAlarm.addListener(alarm => {
+  if (alarm.name !== 'codex-poll') return;
+  chrome.tabs.query({ url: '*://*.openai.com/*' }, tabs => {
+    tabs.forEach(t => chrome.tabs.sendMessage(t.id, { type: 'PING' }));
+  });
+});
 ```
 
 ---
