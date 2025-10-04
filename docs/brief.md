@@ -83,7 +83,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "codex.tasks/dto/content-update.json",
   "type": "object",
-  "required": ["type", "tabId", "origin", "active", "signals"],
+  "required": ["type", "tabId", "origin", "active", "count", "signals"],
   "properties": {
     "type": {"const": "TASKS_UPDATE"},
     "tabId": {"type": "integer", "minimum": 1},
@@ -176,7 +176,7 @@
 ## 7. UX и поведение
 
 * **Popup**: список активных задач с названием вкладки/временной меткой; «Нет активных» — серый текст. Ссылка «Открыть Codex».
-* **Иконка расширения**: бейдж с числом активных задач (суммарно по вкладке) — опционально.
+* **Иконка расширения**: бейдж с числом активных задач (суммарно по вкладке) — опционально; content‑script всегда передаёт `count` (целое ≥0), поэтому можно без дополнительных расчётов отображать число.
 * **Уведомление**: один раз при переходе `>0 → 0`, текст: `Все задачи в Codex завершены` + кнопка `ОК`. Если `sound=true` — проиграть короткий звук (через offscreen document).
 
 **Локализация:** RU/EN строки в словаре; язык по `navigator.language`.
@@ -339,7 +339,8 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
   if (msg.type !== 'TASKS_UPDATE') return;
   const tabId = sender.tab?.id;
   chrome.storage.session.get(['state']).then(({ state = { tabs:{} } }) => {
-    state.tabs[tabId] = { origin: msg.origin, active: msg.active, count: msg.count, updatedAt: Date.now(), signals: msg.signals?.map(s=>s.detector)||[] };
+    const guaranteedCount = msg.count; // по схеме 5.1 поле обязательно
+    state.tabs[tabId] = { origin: msg.origin, active: msg.active, count: guaranteedCount, updatedAt: Date.now(), signals: msg.signals?.map(s=>s.detector)||[] };
     const total = Object.values(state.tabs).reduce((acc,t) => acc + (t.active ? 1 : 0), 0);
     chrome.storage.session.set({ state, lastTotal: total });
 
