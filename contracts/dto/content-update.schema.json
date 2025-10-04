@@ -7,7 +7,6 @@
   "required": [
     "type",
     "origin",
-    "reportedAt",
     "active",
     "count",
     "signals"
@@ -21,16 +20,6 @@
       "type": "string",
       "format": "uri",
       "description": "URL вкладки Codex, из которой отправлено сообщение"
-    },
-    "tabId": {
-      "type": "integer",
-      "minimum": 1,
-      "description": "Идентификатор вкладки Chrome. Может отсутствовать, если сообщение отправлено до присвоения tabId"
-    },
-    "reportedAt": {
-      "type": "string",
-      "format": "date-time",
-      "description": "UTC timestamp формирования снимка состояния"
     },
     "active": {
       "type": "boolean",
@@ -48,24 +37,9 @@
         "$ref": "#/definitions/signal"
       }
     },
-    "meta": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "confidence": {
-          "type": "string",
-          "enum": ["high", "medium", "low"],
-          "description": "Общая оценка уверенности снимка"
-        },
-        "detectors": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "enum": ["D1_SPINNER", "D2_STOP_BUTTON", "D3_CARD_HEUR"]
-          },
-          "description": "Список детекторов, давших сигнал в этом снимке"
-        }
-      }
+    "ts": {
+      "type": "number",
+      "description": "Unix epoch в миллисекундах момента формирования снимка"
     }
   },
   "definitions": {
@@ -88,11 +62,6 @@
           "type": "string",
           "minLength": 1,
           "description": "Уникальный ключ задачи (если доступен)"
-        },
-        "confidence": {
-          "type": "string",
-          "enum": ["high", "medium", "low"],
-          "description": "Уверенность конкретного сигнала"
         }
       }
     }
