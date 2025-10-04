@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codex.tasks/contracts/state/aggregated-state.schema.json",
+  "title": "AggregatedTabsState",
+  "type": "object",
+  "description": "Состояние, которое хранит background service worker в chrome.storage.session",
+  "required": ["version", "tabs", "lastTotal", "debounce"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "pattern": "^v\\d+\\.\\d+\\.\\d+$",
+      "description": "Текущая версия спецификации состояния (например, v0.1.0)"
+    },
+    "tabs": {
+      "type": "object",
+      "description": "Словарь состояний вкладок по идентификатору tabId",
+      "additionalProperties": {
+        "$ref": "#/definitions/tabState"
+      }
+    },
+    "lastTotal": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Суммарное количество активных задач по всем вкладкам"
+    },
+    "debounce": {
+      "$ref": "#/definitions/debounceState"
+    }
+  },
+  "definitions": {
+    "tabState": {
+      "type": "object",
+      "required": ["origin", "title", "count", "active", "updatedAt", "signals"],
+      "additionalProperties": false,
+      "properties": {
+        "origin": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL вкладки Codex"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Отображаемое название вкладки"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Количество активных задач, присоединённых к вкладке"
+        },
+        "active": {
+          "type": "boolean",
+          "description": "Признак наличия активности по мнению контент-скрипта"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Время последнего обновления состояния вкладки"
+        },
+        "signals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/tabSignal"
+          }
+        }
+      }
+    },
+    "tabSignal": {
+      "allOf": [
+        {
+          "$ref": "../dto/content-update.schema.json#/definitions/signal"
+        }
+      ]
+    },
+    "debounceState": {
+      "type": "object",
+      "required": ["ms", "since"],
+      "additionalProperties": false,
+      "properties": {
+        "ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 60000,
+          "default": 12000,
+          "description": "Длительность окна антидребезга в миллисекундах"
+        },
+        "since": {
+          "type": ["integer", "null"],
+          "description": "Unix timestamp (мс) начала окна антидребезга; null, если окно неактивно"
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}
