@@ -83,7 +83,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "codex.tasks/dto/content-update.json",
   "type": "object",
-  "required": ["type", "origin", "active", "signals"],
+  "required": ["type", "tabId", "origin", "active", "count", "signals"],
   "properties": {
     "type": {"const": "TASKS_UPDATE"},
     "origin": {"type": "string", "format": "uri"},
@@ -179,7 +179,7 @@
 ## 7. UX и поведение
 
 * **Popup**: список активных задач с названием вкладки/временной меткой; «Нет активных» — серый текст. Ссылка «Открыть Codex».
-* **Иконка расширения**: бейдж с числом активных задач (суммарно по вкладке) — опционально.
+* **Иконка расширения**: бейдж с числом активных задач (суммарно по вкладке) — опционально; content‑script всегда передаёт `count` (целое ≥0), поэтому можно без дополнительных расчётов отображать число.
 * **Уведомление**: один раз при переходе `>0 → 0`, текст: `Все задачи в Codex завершены` + кнопка `ОК`. Если `sound=true` — проиграть короткий звук (через offscreen document).
 
 **Локализация:** RU/EN строки в словаре; язык по `navigator.language`.
@@ -345,43 +345,21 @@ const DEFAULT_STATE = {
 chrome.runtime.onMessage.addListener((msg, sender) => {
   if (msg.type !== 'TASKS_UPDATE') return;
   const tabId = sender.tab?.id;
-  queueMicrotask(async () => {
-    const { state: stored } = await chrome.storage.session.get(['state']);
-    const state = structuredClone({ ...DEFAULT_STATE, ...stored, tabs: { ...DEFAULT_STATE.tabs, ...(stored?.tabs || {}) } });
+  chrome.storage.session.get(['state']).then(({ state = { tabs:{} } }) => {
+    const guaranteedCount = msg.count; // по схеме 5.1 поле обязательно
+    state.tabs[tabId] = { origin: msg.origin, active: msg.active, count: guaranteedCount, updatedAt: Date.now(), signals: msg.signals?.map(s=>s.detector)||[] };
+    const total = Object.values(state.tabs).reduce((acc,t) => acc + (t.active ? 1 : 0), 0);
+    chrome.storage.session.set({ state, lastTotal: total });
 
-    state.tabs[tabId] = {
-      origin: msg.origin,
-      active: msg.active,
-      count: msg.count,
-      updatedAt: Date.now(),
-      signals: msg.signals?.map(s => s.detector) || []
-    };
-
-    const total = Object.values(state.tabs).reduce((acc, t) => acc + (t.active ? 1 : 0), 0);
-    const debounceMs = state.debounce?.ms ?? DEFAULT_STATE.debounce.ms;
-
-    if (state.lastTotal > 0 && total === 0) {
-      state.debounce = { ms: debounceMs, since: Date.now() };
-    } else if (total > 0) {
-      state.debounce = { ms: debounceMs, since: 0 };
-    }
-
-    state.lastTotal = total;
-    await chrome.storage.session.set({ state });
-
-    if (state.debounce.since && Date.now() - state.debounce.since >= state.debounce.ms) {
-      const { state: fresh } = await chrome.storage.session.get(['state']);
-      const stillZero = Object.values(fresh.tabs).every(t => !t.active);
-      if (stillZero && fresh.lastTotal === 0) {
-        chrome.notifications.create({
-          type: 'basic',
-          iconUrl: 'assets/icon128.png',
-          title: 'Codex',
-          message: 'Все задачи завершены ✅'
-        });
-        fresh.debounce.since = 0;
-        await chrome.storage.session.set({ state: fresh });
-      }
+    if (lastTotal > 0 && total === 0) {
+      zeroSince = Date.now();
+      setTimeout(async () => {
+        const { lastTotal: cur, state: st } = await chrome.storage.session.get(['lastTotal','state']);
+        const stillZero = Object.values(st.tabs).every(t => !t.active);
+        if (stillZero) {
+          chrome.notifications.create({ type:'basic', iconUrl:'assets/icon128.png', title:'Codex', message: 'Все задачи завершены ✅' });
+        }
+      }, debounceMs);
     }
   });
 });
