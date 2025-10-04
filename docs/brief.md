@@ -110,6 +110,9 @@
 ### 5.2. Хранимое агрегированное состояние у background
 
 Объект `state`, записываемый в `chrome.storage.session`, всегда содержит три верхнеуровневых поля: `tabs`, `lastTotal`, `debounce`.
+Все чтения/записи выполняются относительно `DEFAULT_STATE`: при чтении фон берет сохранённый слепок и поверх накладывает значения
+по умолчанию, а при записи обновляет **единый объект** (`state`) так, чтобы `tabs`, `lastTotal` и `debounce` находились в нём и были
+согласованы между собой.
 
 ```json
 {
@@ -351,22 +354,31 @@ const DEFAULT_STATE = {
 chrome.runtime.onMessage.addListener((msg, sender) => {
   if (msg.type !== 'TASKS_UPDATE') return;
   const tabId = sender.tab?.id;
-  chrome.storage.session.get(['state']).then(({ state = { tabs:{} } }) => {
+  chrome.storage.session.get(['state']).then(({ state }) => {
+    const nextState = { ...DEFAULT_STATE, ...state, debounce: { ...DEFAULT_STATE.debounce, ...state?.debounce } };
     const guaranteedCount = msg.count; // по схеме 5.1 поле обязательно
-    state.tabs[tabId] = { origin: msg.origin, active: msg.active, count: guaranteedCount, updatedAt: Date.now(), signals: msg.signals?.map(s=>s.detector)||[] };
-    const total = Object.values(state.tabs).reduce((acc,t) => acc + (t.active ? 1 : 0), 0);
-    chrome.storage.session.set({ state, lastTotal: total });
+    nextState.tabs = { ...nextState.tabs, [tabId]: { origin: msg.origin, active: msg.active, count: guaranteedCount, updatedAt: Date.now(), signals: msg.signals?.map(s=>s.detector)||[] } };
+    const prevTotal = nextState.lastTotal;
+    const total = Object.values(nextState.tabs).reduce((acc,t) => acc + (t.active ? 1 : 0), 0);
+    nextState.lastTotal = total;
 
-    if (lastTotal > 0 && total === 0) {
-      zeroSince = Date.now();
+    if (prevTotal > 0 && total === 0) {
+      nextState.debounce.since = Date.now();
+      const waitMs = nextState.debounce.ms;
       setTimeout(async () => {
-        const { lastTotal: cur, state: st } = await chrome.storage.session.get(['lastTotal','state']);
-        const stillZero = Object.values(st.tabs).every(t => !t.active);
-        if (stillZero) {
+        const stored = await chrome.storage.session.get(['state']);
+        const currentState = { ...DEFAULT_STATE, ...stored.state, debounce: { ...DEFAULT_STATE.debounce, ...stored.state?.debounce } };
+        const stillZero = currentState.lastTotal === 0 && Object.values(currentState.tabs).every(t => !t.active);
+        const debounceElapsed = currentState.debounce.since > 0 && (Date.now() - currentState.debounce.since) >= currentState.debounce.ms;
+        if (stillZero && debounceElapsed) {
           chrome.notifications.create({ type:'basic', iconUrl:'assets/icon128.png', title:'Codex', message: 'Все задачи завершены ✅' });
+          currentState.debounce.since = 0; // очистка после уведомления
+          await chrome.storage.session.set({ state: currentState });
         }
-      }, debounceMs);
+      }, waitMs);
     }
+
+    chrome.storage.session.set({ state: nextState });
   });
 });
 
