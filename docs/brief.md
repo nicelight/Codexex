@@ -20,7 +20,7 @@
 
 1. Точно понимать, есть ли хотя бы одна запущенная задача во всех открытых вкладках Codex.
 2. Показывать системное уведомление «Все задачи завершены», когда счётчик активных задач падает с >0 до 0 (с антидребезгом).
-3. Минимум прав: `storage`, `notifications`, `alarms`, `scripting` и `host_permissions` для доменов Codex/ChatGPT.
+3. Минимум прав: `storage`, `notifications`, `alarms`, `scripting`, `tabs` и `host_permissions` для доменов Codex/ChatGPT.
 4. Приватность: **никаких внешних отправок** данных; только локальное хранение состояния в `chrome.storage.session`.
 
 **Нефункциональные требования (NFR)**
@@ -188,7 +188,7 @@
 ## 8. Разрешения и политика безопасности
 
 * `host_permissions`: `https://*.openai.com/*` (уточнить производный домен Codex при интеграции).
-* `permissions`: `storage`, `notifications`, `alarms`, `scripting` (и `tabs` — только если используем `autoDiscardable` или хотим показывать названия вкладок).
+* `permissions`: `storage`, `notifications`, `alarms`, `scripting`, `tabs` (нужно для пингов вкладок и работы с `autoDiscardable`).
 * CSP: не вставляем инлайновые скрипты в страницу; работаем в изолированном мире контент‑скрипта.
 
 **Приватность:** никакой сети; все данные локально; можно включить «Diagnostic log» (в `storage.session`) для отладки, off by default.
@@ -287,7 +287,7 @@
   "manifest_version": 3,
   "name": "Codex Tasks Watcher",
   "version": "0.1.0",
-  "permissions": ["storage", "notifications", "alarms", "scripting"],
+  "permissions": ["storage", "notifications", "alarms", "scripting", "tabs"],
   "host_permissions": ["https://*.openai.com/*"],
   "background": { "service_worker": "src/bg.js" },
   "content_scripts": [
