@@ -108,6 +108,8 @@
 
 ### 5.2. Хранимое агрегированное состояние у background
 
+Объект `state`, записываемый в `chrome.storage.session`, всегда содержит три верхнеуровневых поля: `tabs`, `lastTotal`, `debounce`.
+
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -219,7 +221,7 @@
 
 ## 10. Логика антидребезга и учёт вкладок
 
-* Background хранит `lastTotal` и `sinceZeroCandidateAt`.
+* Background хранит `state` с полями `tabs`, `lastTotal` и `debounce` (в `debounce.since` фиксируем момент кандидата на уведомление, в `debounce.ms` — длительность из настроек).
 * При каждом `TASKS_UPDATE` пересчитываем `totalActive` = сумма `tab.active`.
 * Если `totalActive == 0` и раньше было `>0`, стартуем `debounce` (`debounceMs` из настроек). По истечении проверяем ещё раз; если всё ещё `0` — уведомляем.
 * Состояние вкладки (tabId) очищается при событии `tabs.onRemoved`.
@@ -333,32 +335,63 @@ snapshot();
 ## 19. Приложение: минимальная логика bg.js (псевдокод)
 
 ```js
-let lastTotal = 0; let zeroSince = 0; let debounceMs = 12000;
+const DEFAULT_STATE = {
+  tabs: {},
+  lastTotal: 0,
+  debounce: { ms: 12000, since: 0 }
+};
 
 chrome.runtime.onMessage.addListener((msg, sender) => {
   if (msg.type !== 'TASKS_UPDATE') return;
   const tabId = sender.tab?.id;
-  chrome.storage.session.get(['state']).then(({ state = { tabs:{} } }) => {
-    state.tabs[tabId] = { origin: msg.origin, active: msg.active, count: msg.count, updatedAt: Date.now(), signals: msg.signals?.map(s=>s.detector)||[] };
-    const total = Object.values(state.tabs).reduce((acc,t) => acc + (t.active ? 1 : 0), 0);
-    chrome.storage.session.set({ state, lastTotal: total });
+  queueMicrotask(async () => {
+    const { state: stored } = await chrome.storage.session.get(['state']);
+    const state = structuredClone({ ...DEFAULT_STATE, ...stored, tabs: { ...DEFAULT_STATE.tabs, ...(stored?.tabs || {}) } });
 
-    if (lastTotal > 0 && total === 0) {
-      zeroSince = Date.now();
-      setTimeout(async () => {
-        const { lastTotal: cur, state: st } = await chrome.storage.session.get(['lastTotal','state']);
-        const stillZero = Object.values(st.tabs).every(t => !t.active);
-        if (stillZero) {
-          chrome.notifications.create({ type:'basic', iconUrl:'assets/icon128.png', title:'Codex', message: 'Все задачи завершены ✅' });
-        }
-      }, debounceMs);
+    state.tabs[tabId] = {
+      origin: msg.origin,
+      active: msg.active,
+      count: msg.count,
+      updatedAt: Date.now(),
+      signals: msg.signals?.map(s => s.detector) || []
+    };
+
+    const total = Object.values(state.tabs).reduce((acc, t) => acc + (t.active ? 1 : 0), 0);
+    const debounceMs = state.debounce?.ms ?? DEFAULT_STATE.debounce.ms;
+
+    if (state.lastTotal > 0 && total === 0) {
+      state.debounce = { ms: debounceMs, since: Date.now() };
+    } else if (total > 0) {
+      state.debounce = { ms: debounceMs, since: 0 };
     }
-    lastTotal = total;
+
+    state.lastTotal = total;
+    await chrome.storage.session.set({ state });
+
+    if (state.debounce.since && Date.now() - state.debounce.since >= state.debounce.ms) {
+      const { state: fresh } = await chrome.storage.session.get(['state']);
+      const stillZero = Object.values(fresh.tabs).every(t => !t.active);
+      if (stillZero && fresh.lastTotal === 0) {
+        chrome.notifications.create({
+          type: 'basic',
+          iconUrl: 'assets/icon128.png',
+          title: 'Codex',
+          message: 'Все задачи завершены ✅'
+        });
+        fresh.debounce.since = 0;
+        await chrome.storage.session.set({ state: fresh });
+      }
+    }
   });
 });
 
 chrome.alarms.create('codex-poll', { periodInMinutes: 1 });
-chrome.alarms.onAlarm.addListener(a => { if (a.name==='codex-poll') chrome.tabs.query({ url:'*://*.openai.com/*' }, tabs => tabs.forEach(t => chrome.tabs.sendMessage(t.id, { type:'PING' }))); });
+chrome.alarms.onAlarm.addListener(alarm => {
+  if (alarm.name !== 'codex-poll') return;
+  chrome.tabs.query({ url: '*://*.openai.com/*' }, tabs => {
+    tabs.forEach(t => chrome.tabs.sendMessage(t.id, { type: 'PING' }));
+  });
+});
 ```
 
 ---
