@@ -83,10 +83,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "codex.tasks/dto/content-update.json",
   "type": "object",
-  "required": ["type", "tabId", "origin", "active", "signals"],
+  "required": ["type", "origin", "active", "signals"],
   "properties": {
     "type": {"const": "TASKS_UPDATE"},
-    "tabId": {"type": "integer", "minimum": 1},
     "origin": {"type": "string", "format": "uri"},
     "active": {"type": "boolean"},
     "count": {"type": "integer", "minimum": 0},
@@ -105,6 +104,8 @@
   }
 }
 ```
+
+> **Примечание:** идентификатор вкладки предоставляется background‑скрипту через `sender.tab.id`, поэтому в контракте сообщения поле `tabId` отсутствует и отдельное разрешение `tabs` для его вычисления в content‑script не требуется.
 
 ### 5.2. Хранимое агрегированное состояние у background
 
@@ -321,7 +322,7 @@ function snapshot(){
     .map(([k]) => ({ detector:k, evidence:'hit' }));
   const active = signals.length > 0;
   const count = Math.max( active ? signals.length : 0, 0 );
-  chrome.runtime.sendMessage({ type:'TASKS_UPDATE', tabId: (chrome.devtools?.inspectedWindow?.tabId)||0, origin: location.origin, active, count, signals, ts: Date.now() });
+  chrome.runtime.sendMessage({ type:'TASKS_UPDATE', origin: location.origin, active, count, signals, ts: Date.now() });
 }
 
 const mo = new MutationObserver(() => snapshot());
