@@ -225,6 +225,7 @@
 * Background хранит `state` с полями `tabs`, `lastTotal` и `debounce` (в `debounce.since` фиксируем момент кандидата на уведомление, в `debounce.ms` — длительность из настроек).
 * При каждом `TASKS_UPDATE` пересчитываем `totalActive` = сумма `tab.active`.
 * Если `totalActive == 0` и раньше было `>0`, стартуем `debounce` (`debounceMs` из настроек). По истечении проверяем ещё раз; если всё ещё `0` — уведомляем.
+* Ежеминутный `PING` из background приводит к `chrome.runtime.onMessage`‑слушателю в content‑script, который вызывает `snapshot()` и восстанавливает состояние вкладки.
 * Состояние вкладки (tabId) очищается при событии `tabs.onRemoved`.
 
 ---
@@ -246,6 +247,7 @@
 5. Вкладку закрыли во время выполнения → не считать её активной после закрытия.
 6. RU/EN локали → корректные тексты.
 7. Опция `sound` → звук присутствует/отсутствует.
+8. Принудительно «усыпить» вкладку → дождаться `PING` и убедиться, что content‑script отвечает `snapshot()` и состояние восстанавливается.
 
 ---
 
@@ -327,6 +329,10 @@ function snapshot(){
 
 const mo = new MutationObserver(() => snapshot());
 mo.observe(document.documentElement, { childList:true, subtree:true, attributes:true });
+
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg?.type === 'PING') snapshot();
+});
 
 snapshot();
 ```
