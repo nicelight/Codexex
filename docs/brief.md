@@ -29,6 +29,7 @@
 * Не вызывает заметной нагрузки (<2% CPU на вкладку в простое, не более 1 DOM‑сканирования в секунду при бурных мутациях благодаря троттлингу `snapshot()` через `requestIdleCallback`/таймер).
 * Интернациональность: работает на RU/EN UI.
 * Устойчивость к редизайну: несколько независимых детекторов; простое обновление сигнатур.
+* Фоновые скрипты применяют настройку `autoDiscardableOff` ко всем вкладкам Codex не позднее нескольких секунд после изменения (проверяется по состоянию `chrome://discards`).
 
 **Не‑цели**
 
@@ -157,6 +158,8 @@
 }
 ```
 
+`autoDiscardableOff = true` трактуется как запрет на авто‑выгрузку вкладок Codex: background обязан применить `chrome.tabs.update({ autoDiscardable: false })` ко всем найденным вкладкам Codex и поддерживать это состояние. Когда настройка выключена (`autoDiscardableOff = false`), фон возвращает стандартное поведение браузера и вызывает `chrome.tabs.update({ autoDiscardable: true })` для затронутых вкладок.
+
 ---
 
 ## 6. Детекторы (правила обнаружения)
@@ -236,6 +239,7 @@
 * Background хранит `state` с полями `tabs`, `lastTotal` и `debounce` (в `debounce.since` фиксируем момент кандидата на уведомление, в `debounce.ms` — длительность из настроек).
 * При каждом `TASKS_UPDATE` пересчитываем `totalActive` как сумму `tab.count` (общее число совпадений по вкладкам).
 * Если `totalActive == 0` и раньше было `>0`, стартуем `debounce` (`debounceMs` из настроек). По истечении проверяем ещё раз; если всё ещё `0` — уведомляем.
+* При старте и при каждом изменении `autoDiscardableOff` фон перечитывает `chrome.storage.sync` и применяет настройку ко всем вкладкам Codex: `true` → `chrome.tabs.update({ autoDiscardable: false })`, `false` → `chrome.tabs.update({ autoDiscardable: true })`. Новые вкладки Codex получают актуальное значение сразу после появления (например, при первом `TASKS_UPDATE` или `PING`).
 * Ежеминутный `PING` из background (через `chrome.tabs.query` + `chrome.tabs.sendMessage`, требует разрешения `tabs`) приводит к `chrome.runtime.onMessage`‑слушателю в content‑script, который вызывает `requestSnapshot()` и восстанавливает состояние вкладки.
 * Логика снапшота опирается на `MutationObserver`, который фиксирует структурные и текстовые изменения (`characterData:true`, см. §18), чтобы обновления контента детекторов D2/D3 попадали в обработку даже без замены узлов.
 * Состояние вкладки (tabId) очищается обработчиком `chrome.tabs.onRemoved`: фон читает `state`, удаляет `state.tabs[tabId]`, пересчитывает `lastTotal`, при обнулении сбрасывает `debounce.since` и сохраняет обновлённый объект.
@@ -262,6 +266,7 @@
 8. Опция `sound` → звук присутствует/отсутствует.
 9. Принудительно «усыпить» вкладку → дождаться `PING` и убедиться, что content‑script ставит в очередь `requestSnapshot()` и состояние восстанавливается.
 10. Сценарий бурных мутаций: запустить скрипт, быстро меняющий DOM, и по логам/таймстемпам сообщений убедиться, что `snapshot()` вызывается не чаще 1 раза в секунду.
+11. Переключать `autoDiscardableOff` в настройках: при `true` вкладки Codex отображаются в `chrome://discards` как «Auto Discardable = No» (или фиксируются логом `tabs.update`), при `false` возвращаются к значению по умолчанию.
 
 ---
 
@@ -456,11 +461,50 @@ const DEFAULT_STATE = {
   debounce: { ms: 12000, since: 0 }
 };
 
+const DEFAULT_SETTINGS = {
+  debounceMs: 12000,
+  sound: false,
+  autoDiscardableOff: true,
+  showBadgeCount: true
+};
+
+let settings = { ...DEFAULT_SETTINGS };
+
+function applyAutoDiscardable(tabId) {
+  if (typeof tabId !== 'number') return;
+  const autoDiscardable = settings.autoDiscardableOff ? false : true;
+  chrome.tabs.update(tabId, { autoDiscardable });
+}
+
+function applyAutoDiscardableToAllCodexTabs() {
+  chrome.tabs.query({ url: '*://*.openai.com/*' }, (tabs) => {
+    tabs.forEach((tab) => applyAutoDiscardable(tab.id));
+  });
+}
+
+function refreshSettings() {
+  return chrome.storage.sync.get(['settings']).then(({ settings: stored }) => {
+    settings = { ...DEFAULT_SETTINGS, ...stored };
+    applyAutoDiscardableToAllCodexTabs();
+  });
+}
+
+refreshSettings();
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'sync' || !changes.settings) return;
+  const next = changes.settings.newValue;
+  settings = { ...DEFAULT_SETTINGS, ...next };
+  applyAutoDiscardableToAllCodexTabs();
+});
+
 chrome.runtime.onMessage.addListener((msg, sender) => {
   if (msg.type !== 'TASKS_UPDATE') return;
   const tabId = sender.tab?.id;
+  applyAutoDiscardable(tabId);
   chrome.storage.session.get(['state']).then(({ state }) => {
     const nextState = { ...DEFAULT_STATE, ...state, debounce: { ...DEFAULT_STATE.debounce, ...state?.debounce } };
+    nextState.debounce.ms = settings.debounceMs;
     const guaranteedCount = msg.count; // по схеме 5.1 поле обязательно
     const inferredActive = guaranteedCount > 0 ? true : msg.active;
     nextState.tabs = { ...nextState.tabs, [tabId]: { origin: msg.origin, active: inferredActive, count: guaranteedCount, updatedAt: Date.now(), signals: msg.signals?.map(s=>s.detector)||[] } };
@@ -474,6 +518,7 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
       setTimeout(async () => {
         const stored = await chrome.storage.session.get(['state']);
         const currentState = { ...DEFAULT_STATE, ...stored.state, debounce: { ...DEFAULT_STATE.debounce, ...stored.state?.debounce } };
+        currentState.debounce.ms = settings.debounceMs;
         const stillZero = currentState.lastTotal === 0 && Object.values(currentState.tabs).every(t => (t.count || 0) === 0);
         const debounceElapsed = currentState.debounce.since > 0 && (Date.now() - currentState.debounce.since) >= currentState.debounce.ms;
         if (stillZero && debounceElapsed) {
@@ -496,6 +541,7 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
     tabs: { ...DEFAULT_STATE.tabs, ...state?.tabs },
     debounce: { ...DEFAULT_STATE.debounce, ...state?.debounce }
   };
+  nextState.debounce.ms = settings.debounceMs;
   delete nextState.tabs[tabId];
   nextState.lastTotal = Object.values(nextState.tabs).reduce((acc, tab) => acc + (tab.count || 0), 0);
   if (nextState.lastTotal === 0) {
