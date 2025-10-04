@@ -4,13 +4,8 @@
   "title": "AggregatedTabsState",
   "type": "object",
   "description": "Состояние, которое хранит background service worker в chrome.storage.session",
-  "required": ["version", "tabs", "lastTotal", "debounce"],
+  "required": ["tabs", "lastTotal", "debounce"],
   "properties": {
-    "version": {
-      "type": "string",
-      "pattern": "^v\\d+\\.\\d+\\.\\d+$",
-      "description": "Текущая версия спецификации состояния (например, v0.1.0)"
-    },
     "tabs": {
       "type": "object",
       "description": "Словарь состояний вкладок по идентификатору tabId",
@@ -30,7 +25,7 @@
   "definitions": {
     "tabState": {
       "type": "object",
-      "required": ["origin", "title", "count", "active", "updatedAt", "signals"],
+      "required": ["origin", "title", "count", "active", "updatedAt"],
       "additionalProperties": false,
       "properties": {
         "origin": {
@@ -53,9 +48,8 @@
           "description": "Признак наличия активности по мнению контент-скрипта"
         },
         "updatedAt": {
-          "type": "string",
-          "format": "date-time",
-          "description": "Время последнего обновления состояния вкладки"
+          "type": "number",
+          "description": "Unix timestamp (мс) последнего обновления состояния вкладки"
         },
         "signals": {
           "type": "array",
@@ -85,8 +79,9 @@
           "description": "Длительность окна антидребезга в миллисекундах"
         },
         "since": {
-          "type": ["integer", "null"],
-          "description": "Unix timestamp (мс) начала окна антидребезга; null, если окно неактивно"
+          "type": "number",
+          "minimum": 0,
+          "description": "Unix timestamp (мс) начала окна антидребезга; 0, если окно неактивно"
         }
       }
     }

@@ -52,7 +52,7 @@ paths:
       operationId: getAggregatedState
       responses:
         '200':
-          description: Актуальное состояние
+          description: Актуальное состояние (`tabs`, `lastTotal`, `debounce`)
           content:
             application/json:
               schema:
