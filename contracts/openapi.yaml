@@ -1,0 +1,72 @@
+openapi: 3.1.0
+info:
+  title: Codex Tasks Watcher Internal API
+  version: 0.1.0
+  description: |
+    Контракт взаимодействия компонентов расширения для целей тестирования и отладки.
+    Реальные коммуникации выполняются через chrome.runtime messaging, однако для contract-тестов
+    используется локальный HTTP-адаптер, отражающий те же структуры данных.
+servers:
+  - url: http://localhost:4173
+    description: Локальный адаптер для контрактных тестов
+paths:
+  /background/tasks-update:
+    post:
+      summary: Приём снимка активности вкладки от контент-скрипта
+      operationId: postTasksUpdate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './dto/content-update.schema.json'
+      responses:
+        '202':
+          description: Снимок принят, агрегатор обновит состояние асинхронно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [accepted]
+        '400':
+          description: Нарушение схемы или отсутствуют обязательные поля
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, errors]
+                properties:
+                  status:
+                    type: string
+                    enum: [invalid]
+                  errors:
+                    type: array
+                    items:
+                      type: string
+  /background/state:
+    get:
+      summary: Получить текущее агрегированное состояние всех вкладок
+      operationId: getAggregatedState
+      responses:
+        '200':
+          description: Актуальное состояние
+          content:
+            application/json:
+              schema:
+                $ref: './state/aggregated-state.schema.json'
+  /popup/state:
+    get:
+      summary: Сформировать данные для отображения popup
+      operationId: getPopupState
+      responses:
+        '200':
+          description: Сборка данных для popup интерфейса
+          content:
+            application/json:
+              schema:
+                $ref: './dto/popup-state.schema.json'
+components:
+  securitySchemes: {}

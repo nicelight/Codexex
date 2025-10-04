@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codex.tasks/contracts/dto/popup-state.schema.json",
+  "title": "PopupRenderState",
+  "type": "object",
+  "required": ["generatedAt", "tabs", "totalActive", "locale"],
+  "properties": {
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Время формирования данных для popup"
+    },
+    "totalActive": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Сумма активных задач по всем вкладкам"
+    },
+    "tabs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/popupTab"
+      },
+      "description": "Список вкладок Codex с краткой информацией для отображения"
+    },
+    "locale": {
+      "type": "string",
+      "enum": ["en", "ru"],
+      "description": "Выбранная локализация popup"
+    },
+    "messages": {
+      "type": "object",
+      "description": "Локализованные строки интерфейса",
+      "patternProperties": {
+        "^[a-zA-Z0-9_.-]+$": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "definitions": {
+    "popupTab": {
+      "type": "object",
+      "required": ["tabId", "title", "origin", "count", "signals"],
+      "additionalProperties": false,
+      "properties": {
+        "tabId": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Идентификатор вкладки Chrome"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Заголовок вкладки для отображения"
+        },
+        "origin": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL вкладки"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Количество активных задач"
+        },
+        "signals": {
+          "type": "array",
+          "items": {
+            "$ref": "./content-update.schema.json#/definitions/signal"
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

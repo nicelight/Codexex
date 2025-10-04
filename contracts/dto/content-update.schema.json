@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codex.tasks/contracts/dto/content-update.schema.json",
+  "title": "ContentScriptTasksUpdate",
+  "description": "Сообщение контент-скрипта о текущем состоянии задач на вкладке Codex",
+  "type": "object",
+  "required": [
+    "type",
+    "origin",
+    "reportedAt",
+    "active",
+    "count",
+    "signals"
+  ],
+  "properties": {
+    "type": {
+      "const": "TASKS_UPDATE",
+      "description": "Тип сообщения для роутинга в background service worker"
+    },
+    "origin": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL вкладки Codex, из которой отправлено сообщение"
+    },
+    "tabId": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Идентификатор вкладки Chrome. Может отсутствовать, если сообщение отправлено до присвоения tabId"
+    },
+    "reportedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC timestamp формирования снимка состояния"
+    },
+    "active": {
+      "type": "boolean",
+      "description": "Булево представление наличия активных задач на вкладке"
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Количество активных задач (максимум между детекторами)"
+    },
+    "signals": {
+      "type": "array",
+      "description": "Детализированные сигналы детекторов для отладки и popup",
+      "items": {
+        "$ref": "#/definitions/signal"
+      }
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "type": "string",
+          "enum": ["high", "medium", "low"],
+          "description": "Общая оценка уверенности снимка"
+        },
+        "detectors": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["D1_SPINNER", "D2_STOP_BUTTON", "D3_CARD_HEUR"]
+          },
+          "description": "Список детекторов, давших сигнал в этом снимке"
+        }
+      }
+    }
+  },
+  "definitions": {
+    "signal": {
+      "type": "object",
+      "required": ["detector", "evidence"],
+      "additionalProperties": false,
+      "properties": {
+        "detector": {
+          "type": "string",
+          "enum": ["D1_SPINNER", "D2_STOP_BUTTON", "D3_CARD_HEUR"],
+          "description": "Идентификатор сработавшего детектора"
+        },
+        "evidence": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Краткое описание или CSS-селектор обнаруженного элемента"
+        },
+        "taskKey": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Уникальный ключ задачи (если доступен)"
+        },
+        "confidence": {
+          "type": "string",
+          "enum": ["high", "medium", "low"],
+          "description": "Уверенность конкретного сигнала"
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}
