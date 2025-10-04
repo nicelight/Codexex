@@ -40,7 +40,7 @@
 ## Типы тестов
 - **Unit**
   - Детекторы: корректное определение активности по тестовым DOM-фрагментам.
-  - Агрегатор: переходы состояний `lastTotal`, антидребезг.
+  - Агрегатор: переходы состояний `lastTotal`, антидребезг и применение формулы `max(D2_count, D3_count, D1_indicatorCount)` (включая сценарий «только D3»).
   - Settings: валидация объекта настроек, применение дефолтов и пересчёт `debounceMs`.
 - **Contract**
   - Валидация OpenAPI: `POST /background/tasks-update`, `GET /background/state`, `GET /popup/state`.
