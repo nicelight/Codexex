@@ -26,7 +26,7 @@
 **Нефункциональные требования (NFR)**
 
 * Работает при неактивной вкладке Codex; корректно переживает «сон» service worker’а (MV3).
-* Не вызывает заметной нагрузки (<2% CPU на вкладку в простое, не более 1 DOM‑сканирования в секунду при бурных мутациях благодаря MutationObserver).
+* Не вызывает заметной нагрузки (<2% CPU на вкладку в простое, не более 1 DOM‑сканирования в секунду при бурных мутациях благодаря троттлингу `snapshot()` через `requestIdleCallback`/таймер).
 * Интернациональность: работает на RU/EN UI.
 * Устойчивость к редизайну: несколько независимых детекторов; простое обновление сигнатур.
 
@@ -230,7 +230,7 @@
 * Background хранит `state` с полями `tabs`, `lastTotal` и `debounce` (в `debounce.since` фиксируем момент кандидата на уведомление, в `debounce.ms` — длительность из настроек).
 * При каждом `TASKS_UPDATE` пересчитываем `totalActive` = сумма `tab.active`.
 * Если `totalActive == 0` и раньше было `>0`, стартуем `debounce` (`debounceMs` из настроек). По истечении проверяем ещё раз; если всё ещё `0` — уведомляем.
-* Ежеминутный `PING` из background (через `chrome.tabs.query` + `chrome.tabs.sendMessage`, требует разрешения `tabs`) приводит к `chrome.runtime.onMessage`‑слушателю в content‑script, который вызывает `snapshot()` и восстанавливает состояние вкладки.
+* Ежеминутный `PING` из background (через `chrome.tabs.query` + `chrome.tabs.sendMessage`, требует разрешения `tabs`) приводит к `chrome.runtime.onMessage`‑слушателю в content‑script, который вызывает `requestSnapshot()` и восстанавливает состояние вкладки.
 * Состояние вкладки (tabId) очищается обработчиком `chrome.tabs.onRemoved`: фон читает `state`, удаляет `state.tabs[tabId]`, пересчитывает `lastTotal`, при обнулении сбрасывает `debounce.since` и сохраняет обновлённый объект.
 
 ---
@@ -253,7 +253,8 @@
 6. Проверить обработчик `tabs.onRemoved`: закрыть вкладку, убедиться по popup/логу, что запись о вкладке удалена и антидребезг сброшен.
 7. RU/EN локали → корректные тексты.
 8. Опция `sound` → звук присутствует/отсутствует.
-9. Принудительно «усыпить» вкладку → дождаться `PING` и убедиться, что content‑script отвечает `snapshot()` и состояние восстанавливается.
+9. Принудительно «усыпить» вкладку → дождаться `PING` и убедиться, что content‑script ставит в очередь `requestSnapshot()` и состояние восстанавливается.
+10. Сценарий бурных мутаций: запустить скрипт, быстро меняющий DOM, и по логам/таймстемпам сообщений убедиться, что `snapshot()` вызывается не чаще 1 раза в секунду.
 
 ---
 
@@ -343,6 +344,12 @@ const detectors = {
   D3_CARD_HEUR: () => !!firstVisible('[data-testid*="task" i]', (node) => /running|выполняется/i.test(node.textContent || ''))
 };
 
+const SNAPSHOT_MIN_INTERVAL = 1000; // 1 scan/sec максимум
+let lastSnapshotAt = 0;
+let pendingSnapshot = false;
+let idleHandle = null;
+let fallbackTimer = null;
+
 function snapshot(){
   const signals = Object.entries(detectors)
     .filter(([k,fn]) => { try { return fn(); } catch { return false; } })
@@ -352,14 +359,59 @@ function snapshot(){
   chrome.runtime.sendMessage({ type:'TASKS_UPDATE', origin: location.origin, active, count, signals, ts: Date.now() });
 }
 
-const mo = new MutationObserver(() => snapshot());
+const runScheduledSnapshot = () => {
+  pendingSnapshot = false;
+  if (fallbackTimer) {
+    clearTimeout(fallbackTimer);
+    fallbackTimer = null;
+  }
+  if (idleHandle && 'cancelIdleCallback' in window) {
+    cancelIdleCallback(idleHandle);
+    idleHandle = null;
+  }
+
+  const now = performance.now();
+  const elapsed = now - lastSnapshotAt;
+  if (elapsed < SNAPSHOT_MIN_INTERVAL) {
+    pendingSnapshot = true;
+    fallbackTimer = window.setTimeout(() => {
+      fallbackTimer = null;
+      runScheduledSnapshot();
+    }, SNAPSHOT_MIN_INTERVAL - elapsed);
+    return;
+  }
+
+  lastSnapshotAt = now;
+  snapshot();
+};
+
+function requestSnapshot() {
+  if (pendingSnapshot) return;
+  pendingSnapshot = true;
+
+  const launch = () => {
+    idleHandle = null;
+    runScheduledSnapshot();
+  };
+
+  if ('requestIdleCallback' in window) {
+    idleHandle = requestIdleCallback(launch, { timeout: SNAPSHOT_MIN_INTERVAL });
+  } else {
+    fallbackTimer = window.setTimeout(() => {
+      fallbackTimer = null;
+      launch();
+    }, 0);
+  }
+}
+
+const mo = new MutationObserver(() => requestSnapshot());
 mo.observe(document.documentElement, { childList:true, subtree:true, attributes:true });
 
 chrome.runtime.onMessage.addListener((msg) => {
-  if (msg?.type === 'PING') snapshot();
+  if (msg?.type === 'PING') requestSnapshot();
 });
 
-snapshot();
+requestSnapshot();
 ```
 
 ---
