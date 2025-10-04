@@ -164,6 +164,7 @@
 
 * Положительные признаки: `[aria-busy="true"]`, `[role="progressbar"]`, элементы с классами вида `.animate-spin`, SVG с `animateTransform`, наличие `aria-label` типа `loading`.
 * Негативные признаки: отображение спиннера внутри скрытых контейнеров (`display:none`, `aria-hidden=true`) — игнорировать.
+* Обязательные проверки видимости: элемент и его предки не помечены `aria-hidden="true"`; `offsetParent` существует (либо стиль `position:fixed`), `getComputedStyle` не возвращает `display:none`, `visibility:hidden|collapse`, `opacity:0`.
 
 **D2 — Кнопка Stop/Остановить**
 
@@ -184,6 +185,7 @@
 * **Popup**: список активных задач с названием вкладки/временной меткой; «Нет активных» — серый текст. Ссылка «Открыть Codex».
 * **Иконка расширения**: бейдж с числом активных задач (суммарно по вкладке) — опционально; content‑script всегда передаёт `count` (целое ≥0), поэтому можно без дополнительных расчётов отображать число.
 * **Уведомление**: один раз при переходе `>0 → 0`, текст: `Все задачи в Codex завершены` + кнопка `ОК`. Если `sound=true` — проиграть короткий звук (через offscreen document).
+* **Детекторы**: фильтруют скрытые элементы (шаблонные спиннеры, `aria-hidden` контейнеры) до расчёта состояния, чтобы исключить ложные уведомления.
 
 **Локализация:** RU/EN строки в словаре; язык по `navigator.language`.
 
@@ -262,6 +264,7 @@
 * AC‑3: Расширение не инициирует сетевые запросы за пределы домена браузера и не отправляет пользовательские данные наружу.
 * AC‑4: Работает на неактивных вкладках; после принудительного сна background восстанавливает агрегированное состояние в течение 60 секунд.
 * AC‑5: Минимальные permissions; установка проходит без ошибок; в popup виден список активных задач или сообщение об их отсутствии.
+* AC‑6: Детекторы не дают ложных срабатываний на скрытые индикаторы (спиннеры/кнопки внутри `aria-hidden`, `display:none`, `visibility:hidden|collapse`, `opacity:0`).
 
 ---
 
@@ -316,10 +319,28 @@
 ## 18. Приложение: минимальная логика content.js (псевдокод)
 
 ```js
+const isVisible = (node) => {
+  if (!node) return false;
+  if (node.closest('[aria-hidden="true"]')) return false;
+  const style = window.getComputedStyle(node);
+  if (style.display === 'none') return false;
+  if (style.visibility === 'hidden' || style.visibility === 'collapse') return false;
+  if (parseFloat(style.opacity) === 0) return false;
+  if (!node.offsetParent && style.position !== 'fixed') return false;
+  return true;
+};
+
+const firstVisible = (selector, matcher = () => true) =>
+  Array.from(document.querySelectorAll(selector)).find((el) => isVisible(el) && matcher(el));
+
 const detectors = {
-  D1_SPINNER: () => !!document.querySelector('[aria-busy="true"], [role="progressbar"], .animate-spin, svg[aria-label*="loading" i]'),
-  D2_STOP_BUTTON: () => Array.from(document.querySelectorAll('button')).some(b => /stop|остановить/i.test(b.textContent) || /stop/i.test(b.ariaLabel||'')),
-  D3_CARD_HEUR: () => Array.from(document.querySelectorAll('[data-testid*="task" i]')).some(n => /running|выполняется/i.test(n.textContent))
+  D1_SPINNER: () => !!firstVisible('[aria-busy="true"], [role="progressbar"], .animate-spin, svg[aria-label*="loading" i]'),
+  D2_STOP_BUTTON: () => !!firstVisible('button', (btn) => {
+    const aria = btn.getAttribute('aria-label') || '';
+    const text = btn.textContent || '';
+    return /stop|остановить/i.test(aria + ' ' + text);
+  }),
+  D3_CARD_HEUR: () => !!firstVisible('[data-testid*="task" i]', (node) => /running|выполняется/i.test(node.textContent || ''))
 };
 
 function snapshot(){
@@ -327,7 +348,7 @@ function snapshot(){
     .filter(([k,fn]) => { try { return fn(); } catch { return false; } })
     .map(([k]) => ({ detector:k, evidence:'hit' }));
   const active = signals.length > 0;
-  const count = Math.max( active ? signals.length : 0, 0 );
+  const count = Math.max(active ? signals.length : 0, 0);
   chrome.runtime.sendMessage({ type:'TASKS_UPDATE', origin: location.origin, active, count, signals, ts: Date.now() });
 }
 
