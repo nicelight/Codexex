@@ -21,10 +21,9 @@
 - `ts`: Unix-время (мс) формирования снимка.
 
 ### AggregatedState (в background)
-- `tabs`: словарь `tabId -> { origin, title, count, active, updatedAt, signals[] }`.
+- `tabs`: словарь `tabId -> { origin, title, count, active, updatedAt, signals? }`, где `updatedAt` — Unix-время (мс) последнего обновления, а `signals` хранит последний снимок детекторов и может отсутствовать для вкладок без детальных сигналов.
 - `lastTotal`: сумма `count` всех вкладок.
-- `debounce`: `{ ms, since }` — параметры антидребезга.
-- `version`: целевой релиз (например, `v0.1.0`).
+- `debounce`: `{ ms, since }` — параметры антидребезга, где `since` фиксирует Unix-время (мс) начала окна и сбрасывается в `0`, когда окно неактивно.
 
 ### NotificationState
 - Косвенно хранится через системные уведомления; идемпотентность достигается проверкой `lastTotal` и `debounce.since`.
