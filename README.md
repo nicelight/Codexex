@@ -1,6 +1,6 @@
-# Codex Tasks Watcher — README.md
-       НА ЭТАПЕ РАЗРАБОТКИ...
-> Лёгкое расширение Chrome для наблюдения за задачами в Codex через DOM‑детекторы. Показывает уведомление, когда во всех вкладках задач больше нет.
+# Codex Tasks Watcher
+       ПРОЕКТ НА ЭТАПЕ РАЗРАБОТКИ...
+> CODEXEX - это лёгкое расширение Chrome для наблюдения за задачами в Codex через DOM‑детекторы. Показывает уведомление, когда во всех вкладках задач больше нет.
 
 <p align="center">
   <img alt="logo" src="https://img.shields.io/badge/Codex-Tasks%20Watcher-8A2BE2?style=for-the-badge&logo=google-chrome&logoColor=white">
