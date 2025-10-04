@@ -20,7 +20,7 @@
 
 1. Точно понимать, есть ли хотя бы одна запущенная задача во всех открытых вкладках Codex.
 2. Показывать системное уведомление «Все задачи завершены», когда счётчик активных задач падает с >0 до 0 (с антидребезгом).
-3. Минимум прав: `storage`, `notifications`, `alarms`, `scripting` и `host_permissions` для доменов Codex/ChatGPT.
+3. Минимум прав: `storage`, `notifications`, `alarms`, `scripting` и `host_permissions` для доменов Codex/ChatGPT; `tabs` не требуется, потому что идентификатор вкладки получает background через `sender.tab`.
 4. Приватность: **никаких внешних отправок** данных; только локальное хранение состояния в `chrome.storage.session`.
 
 **Нефункциональные требования (NFR)**
@@ -83,10 +83,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "codex.tasks/dto/content-update.json",
   "type": "object",
-  "required": ["type", "tabId", "origin", "active", "signals"],
+  "required": ["type", "origin", "active", "signals"],
   "properties": {
     "type": {"const": "TASKS_UPDATE"},
-    "tabId": {"type": "integer", "minimum": 1},
     "origin": {"type": "string", "format": "uri"},
     "active": {"type": "boolean"},
     "count": {"type": "integer", "minimum": 0},
@@ -105,6 +104,8 @@
   }
 }
 ```
+
+> **Примечание:** идентификатор вкладки предоставляется background‑скрипту через `sender.tab.id`, поэтому в контракте сообщения поле `tabId` отсутствует и отдельное разрешение `tabs` для его вычисления в content‑script не требуется.
 
 ### 5.2. Хранимое агрегированное состояние у background
 
@@ -188,7 +189,7 @@
 ## 8. Разрешения и политика безопасности
 
 * `host_permissions`: `https://*.openai.com/*` (уточнить производный домен Codex при интеграции).
-* `permissions`: `storage`, `notifications`, `alarms`, `scripting` (и `tabs` — только если используем `autoDiscardable` или хотим показывать названия вкладок).
+* `permissions`: `storage`, `notifications`, `alarms`, `scripting` (`tabs` остаётся опциональным для дополнительных возможностей вроде `autoDiscardable` или заголовков вкладок; для идентификатора вкладки достаточно `sender.tab`).
 * CSP: не вставляем инлайновые скрипты в страницу; работаем в изолированном мире контент‑скрипта.
 
 **Приватность:** никакой сети; все данные локально; можно включить «Diagnostic log» (в `storage.session`) для отладки, off by default.
@@ -319,7 +320,7 @@ function snapshot(){
     .map(([k]) => ({ detector:k, evidence:'hit' }));
   const active = signals.length > 0;
   const count = Math.max( active ? signals.length : 0, 0 );
-  chrome.runtime.sendMessage({ type:'TASKS_UPDATE', tabId: (chrome.devtools?.inspectedWindow?.tabId)||0, origin: location.origin, active, count, signals, ts: Date.now() });
+  chrome.runtime.sendMessage({ type:'TASKS_UPDATE', origin: location.origin, active, count, signals, ts: Date.now() });
 }
 
 const mo = new MutationObserver(() => snapshot());
@@ -338,6 +339,7 @@ let lastTotal = 0; let zeroSince = 0; let debounceMs = 12000;
 chrome.runtime.onMessage.addListener((msg, sender) => {
   if (msg.type !== 'TASKS_UPDATE') return;
   const tabId = sender.tab?.id;
+  if (!tabId) return;
   chrome.storage.session.get(['state']).then(({ state = { tabs:{} } }) => {
     state.tabs[tabId] = { origin: msg.origin, active: msg.active, count: msg.count, updatedAt: Date.now(), signals: msg.signals?.map(s=>s.detector)||[] };
     const total = Object.values(state.tabs).reduce((acc,t) => acc + (t.active ? 1 : 0), 0);
