@@ -130,9 +130,10 @@
       "type": "object",
       "additionalProperties": {
         "type": "object",
-        "required": ["origin","active","count","updatedAt"],
+        "required": ["origin","title","active","count","updatedAt"],
         "properties": {
           "origin": {"type": "string"},
+          "title": {"type": "string", "description": "Название вкладки, берётся из sender.tab.title, при отсутствии заменяется на origin"},
           "active": {"type": "boolean"},
           "count": {"type": "integer"},
           "updatedAt": {"type": "number"},
@@ -205,7 +206,7 @@
 
 ## 7. UX и поведение
 
-* **Popup (MVP v0.1.0)**: список активных задач с названием вкладки/временной меткой; «Нет активных» — серый текст. Ссылка «Открыть Codex».
+* **Popup (MVP v0.1.0)**: список активных задач с названием вкладки/временной меткой; название берём из `sender.tab.title` и кэшируем в `state.tabs[tabId].title` (если `title` пустое, используем `origin`). «Нет активных» — серый текст. Ссылка «Открыть Codex».
 * **Системное уведомление (MVP v0.1.0)**: один раз при переходе `>0 → 0`, текст: `Все задачи в Codex завершены` + кнопка `ОК`.
 * **Иконка расширения (v0.2.0+)**: бейдж с точным числом активных задач (суммарно по вкладке); при `count = 0` бейдж очищается.
 * **Звук уведомления (v0.2.0+)**: при включенной настройке `sound` проигрывается короткий клип (через offscreen document).
@@ -274,7 +275,7 @@
 
 ### MVP v0.1.0
 
-1. Одна вкладка, одна задача → дождаться завершения → одно уведомление.
+1. Одна вкладка, одна задача → дождаться завершения → одно уведомление; в popup карточка задачи отображает название вкладки (по `title`).
 2. Несколько вкладок (2–3), задачи заканчиваются в разное время → уведомление только когда все завершились.
 3. Краткий всплеск спиннера (перезапуск) → уведомление **не** показывается (антидребезг).
 4. Неактивная вкладка (свернута) → уведомление приходит.
@@ -301,7 +302,7 @@
 * AC‑2 (MVP v0.1.0): Уведомление «Все задачи завершены» показывается **ровно один раз** при переходе `>0 → 0` с задержкой по настройке.
 * AC‑3: Расширение не инициирует сетевые запросы за пределы домена браузера и не отправляет пользовательские данные наружу.
 * AC‑4: Работает на неактивных вкладках; после принудительного сна background восстанавливает агрегированное состояние в течение 60 секунд.
-* AC‑5: Минимальные permissions; установка проходит без ошибок; в popup виден список активных задач или сообщение об их отсутствии.
+* AC‑5: Минимальные permissions; установка проходит без ошибок; в popup виден список активных задач с названием каждой вкладки (по `state.tabs[tabId].title`) или сообщение об их отсутствии.
 * AC‑6: Детекторы не дают ложных срабатываний на скрытые индикаторы (спиннеры/кнопки внутри `aria-hidden`, `display:none`, `visibility:hidden|collapse`, `opacity:0`).
 
 ---
@@ -587,7 +588,8 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
     nextState.debounce.ms = settings.debounceMs;
     const guaranteedCount = msg.count; // по схеме 5.1 поле обязательно
     const inferredActive = guaranteedCount > 0 ? true : msg.active;
-    nextState.tabs = { ...nextState.tabs, [tabId]: { origin: msg.origin, active: inferredActive, count: guaranteedCount, updatedAt: Date.now(), signals: msg.signals?.map(s=>s.detector)||[] } };
+    const title = sender.tab?.title?.trim();
+    nextState.tabs = { ...nextState.tabs, [tabId]: { origin: msg.origin, title: title || msg.origin, active: inferredActive, count: guaranteedCount, updatedAt: Date.now(), signals: msg.signals?.map(s=>s.detector)||[] } };
     const prevTotal = nextState.lastTotal;
     const total = Object.values(nextState.tabs).reduce((acc,t) => acc + (t.count || 0), 0);
     nextState.lastTotal = total;
