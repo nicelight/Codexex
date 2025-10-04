@@ -18,7 +18,7 @@
 - `active`: булев флаг наличия активных задач.
 - `count`: количество задач (по максимуму между детекторами).
 - `signals`: массив детализированных доказательств.
-- `reportedAt`: timestamp отправки.
+- `ts`: Unix-время (мс) формирования снимка.
 
 ### AggregatedState (в background)
 - `tabs`: словарь `tabId -> { origin, title, count, active, updatedAt, signals[] }`.
