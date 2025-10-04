@@ -20,7 +20,7 @@
 
 1. Точно понимать, есть ли хотя бы одна запущенная задача во всех открытых вкладках Codex.
 2. Показывать системное уведомление «Все задачи завершены», когда счётчик активных задач падает с >0 до 0 (с антидребезгом).
-3. Минимум прав: `storage`, `notifications`, `alarms`, `scripting`, `tabs` и `host_permissions` для доменов Codex/ChatGPT.
+3. Минимум прав: `storage`, `notifications`, `alarms`, `scripting`, `tabs` и `host_permissions` для доменов Codex/ChatGPT (`tabs` требуется background для опроса и очистки вкладок).
 4. Приватность: **никаких внешних отправок** данных; только локальное хранение состояния в `chrome.storage.session`.
 
 **Нефункциональные требования (NFR)**
@@ -83,7 +83,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "codex.tasks/dto/content-update.json",
   "type": "object",
-  "required": ["type", "tabId", "origin", "active", "count", "signals"],
+  "required": ["type", "origin", "active", "count", "signals"],
   "properties": {
     "type": {"const": "TASKS_UPDATE"},
     "origin": {"type": "string", "format": "uri"},
@@ -105,7 +105,7 @@
 }
 ```
 
-> **Примечание:** идентификатор вкладки предоставляется background‑скрипту через `sender.tab.id`, поэтому в контракте сообщения поле `tabId` отсутствует и отдельное разрешение `tabs` для его вычисления в content‑script не требуется.
+> **Примечание:** идентификатор вкладки background получает из `sender.tab.id`, поэтому поле `tabId` в сообщении не требуется. Контент‑скрипт не вычисляет `tabId`, а разрешение `tabs` используется только на стороне background для пингов и очистки состояния вкладок (см. §§2/8/10).
 
 ### 5.2. Хранимое агрегированное состояние у background
 
@@ -191,7 +191,7 @@
 ## 8. Разрешения и политика безопасности
 
 * `host_permissions`: `https://*.openai.com/*` (уточнить производный домен Codex при интеграции).
-* `permissions`: `storage`, `notifications`, `alarms`, `scripting`, `tabs` (нужно для пингов вкладок и работы с `autoDiscardable`).
+* `permissions`: `storage`, `notifications`, `alarms`, `scripting`, `tabs` (нужно background для пингов вкладок и работы с `autoDiscardable`).
 * CSP: не вставляем инлайновые скрипты в страницу; работаем в изолированном мире контент‑скрипта.
 
 **Приватность:** никакой сети; все данные локально; можно включить «Diagnostic log» (в `storage.session`) для отладки, off by default.
@@ -225,7 +225,7 @@
 * Background хранит `state` с полями `tabs`, `lastTotal` и `debounce` (в `debounce.since` фиксируем момент кандидата на уведомление, в `debounce.ms` — длительность из настроек).
 * При каждом `TASKS_UPDATE` пересчитываем `totalActive` = сумма `tab.active`.
 * Если `totalActive == 0` и раньше было `>0`, стартуем `debounce` (`debounceMs` из настроек). По истечении проверяем ещё раз; если всё ещё `0` — уведомляем.
-* Ежеминутный `PING` из background приводит к `chrome.runtime.onMessage`‑слушателю в content‑script, который вызывает `snapshot()` и восстанавливает состояние вкладки.
+* Ежеминутный `PING` из background (через `chrome.tabs.query` + `chrome.tabs.sendMessage`, требует разрешения `tabs`) приводит к `chrome.runtime.onMessage`‑слушателю в content‑script, который вызывает `snapshot()` и восстанавливает состояние вкладки.
 * Состояние вкладки (tabId) очищается при событии `tabs.onRemoved`.
 
 ---
