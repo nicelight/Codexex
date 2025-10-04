@@ -89,7 +89,11 @@
     "type": {"const": "TASKS_UPDATE"},
     "origin": {"type": "string", "format": "uri"},
     "active": {"type": "boolean"},
-    "count": {"type": "integer", "minimum": 0},
+    "count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Агрегированное количество активных задач на вкладке: максимум между числом уникальных задач, найденных детекторами, и числовыми счётчиками спиннеров"
+    },
     "signals": {
       "type": "array",
       "items": {
@@ -164,32 +168,39 @@
 **D1 — Спиннер**
 
 * Положительные признаки: `[aria-busy="true"]`, `[role="progressbar"]`, элементы с классами вида `.animate-spin`, SVG с `animateTransform`, наличие `aria-label` типа `loading`.
-* Если глобальный индикатор отображает числовой счётчик (например, «2» внутри крутящегося бейджа), извлекаем цифру и считаем её значением `count` для вкладки.
+* Для каждого видимого индикатора проверяем текстовое содержимое: если внутри есть цифры, извлекаем первую последовательность, приводим к числу (`parseInt`) и передаём как подсказку `countHint` для расчёта `count` (см. §18).
 * Негативные признаки: отображение спиннера внутри скрытых контейнеров (`display:none`, `aria-hidden=true`) — игнорировать.
 * Обязательные проверки видимости: элемент и его предки не помечены `aria-hidden="true"`; `offsetParent` существует (либо стиль `position:fixed`), `getComputedStyle` не возвращает `display:none`, `visibility:hidden|collapse`, `opacity:0`.
-* Детектор возвращает **коллекцию найденных видимых элементов** (включая счётчики внутри), чтобы downstream‑логика могла сосчитать все совпадения.
+* Детектор возвращает **коллекцию найденных видимых элементов** вместе с `countHint`, чтобы downstream‑логика могла использовать числовой счётчик как верхнюю границу, а при его отсутствии — присутствие спиннера как минимум одну активную задачу.
 
 **D2 — Кнопка Stop/Остановить**
 
 * Ищем кнопки в карточках задач на главной: `button[aria-label*="Stop" i], button:has(svg[aria-label*="stop" i]), button:contains("Stop"|"Остановить")` (приблизительно; реализация через обход и проверку текста/ARIA).
-* Каждый видимый экземпляр такой кнопки добавляется в коллекцию результатов детектора.
+* Каждый видимый экземпляр такой кнопки добавляется в коллекцию результатов детектора с вычисленным `taskKey` (ближайшая карточка задачи по `data-task-id`/`data-testid*="task"`), чтобы downstream‑логика могла объединить несколько сигналов об одной задаче.
 * Детектор должен реагировать на изменение текста кнопки без замены DOM-узла, поэтому `MutationObserver` обязан отслеживать изменения `characterData` (см. §18).
 
 **D3 — Карточки задач (эвристика)**
 
 * Учитываем элементы с data‑атрибутами `data-testid*="task"`, заголовки задач.
 * Если карточка помечена как «Running command…»/локализованный эквивалент — считаем активной.
-* Детектор возвращает набор карточек, удовлетворяющих условиям и прошедших проверку видимости.
+* Детектор возвращает набор карточек, удовлетворяющих условиям и прошедших проверку видимости, с `taskKey`, совпадающим с ключом, который вычисляет D2.
 * Аналогично D2, изменения текста внутри карточек (без подмены узлов) должны фиксироваться благодаря `MutationObserver` с `characterData:true` (см. §18).
 
-**Политика решения:** активной считаем вкладку, если сработал **любой** детектор. Поле `count` — сумма размеров всех коллекций (для бейджа и агрегации). В уведомлениях показываем только факт 0/не 0.
+**Нормализация задач и расчёт `count`**
+
+* Контент-скрипт формирует единый список сигналов, где каждая запись содержит `detector`, `evidence` и (если применимо) `taskKey`.
+* Для спиннеров дополнительно фиксируем `countHint` (цифры внутри индикатора); значение участвует только в расчёте `count` и не передаётся в `signals`.
+* `taskKey` строится по правилу: `data-task-id` → `data-testid` карточки → `aria-labelledby` → текстовый селектор `describeNode(node)` (см. §18). Это позволяет идентифицировать одну и ту же задачу, даже если её обнаружили разные детекторы.
+* Поле `count` вычисляется как максимум из трёх величин: числа уникальных `taskKey`, максимального `countHint` от спиннеров и факта наличия хотя бы одного спиннера (минимум 1 при видимом индикаторе без цифр). В уведомлениях показываем только факт 0/не 0.
+
+**Политика решения:** активной считаем вкладку, если сработал **любой** детектор. Значение `active` фиксирует факт совпадения, а `count` отражает агрегированное количество задач по правилу выше.
 
 ---
 
 ## 7. UX и поведение
 
 * **Popup**: список активных задач с названием вкладки/временной меткой; «Нет активных» — серый текст. Ссылка «Открыть Codex».
-* **Иконка расширения**: обязательный бейдж с точным числом активных задач (суммарно по вкладке); content‑script всегда передаёт `count` (целое ≥0), поэтому можно без дополнительных расчётов отображать число. При `count = 0` бейдж очищается.
+* **Иконка расширения**: обязательный бейдж с точным числом активных задач (суммарно по вкладке); content‑script агрегирует `count` по правилу §6, поэтому background просто ставит это значение на бейдж. При `count = 0` бейдж очищается.
 * **Уведомление**: один раз при переходе `>0 → 0`, текст: `Все задачи в Codex завершены` + кнопка `ОК`. Если `sound=true` — проиграть короткий звук (через offscreen document).
 * **Детекторы**: фильтруют скрытые элементы (шаблонные спиннеры, `aria-hidden` контейнеры) до расчёта состояния, чтобы исключить ложные уведомления.
 
@@ -262,6 +273,8 @@
 8. Опция `sound` → звук присутствует/отсутствует.
 9. Принудительно «усыпить» вкладку → дождаться `PING` и убедиться, что content‑script ставит в очередь `requestSnapshot()` и состояние восстанавливается.
 10. Сценарий бурных мутаций: запустить скрипт, быстро меняющий DOM, и по логам/таймстемпам сообщений убедиться, что `snapshot()` вызывается не чаще 1 раза в секунду.
+11. Глобальный спиннер с числовым индикатором (например, «3») при отсутствии карточек → бейдж и popup показывают 3; в сообщении `TASKS_UPDATE` поле `count` равно 3.
+12. Одна задача одновременно детектируется D2 и D3 → в бейдже и popup остаётся 1 (дедупликация по `taskKey`).
 
 ---
 
@@ -348,14 +361,46 @@ const describeNode = (node) => {
   return `${tag}${id}${cls}`;
 };
 
+const TASK_CARD_SELECTOR = '[data-testid*="task" i]';
+
+const resolveTaskKey = (node) => {
+  if (!node) return null;
+  const card = node.closest?.(TASK_CARD_SELECTOR);
+  if (card) {
+    return card.getAttribute('data-task-id') || card.getAttribute('data-testid') || describeNode(card);
+  }
+  const labelled = node.getAttribute?.('aria-labelledby');
+  if (labelled) return labelled;
+  return describeNode(node);
+};
+
+const extractSpinnerHint = (node) => {
+  const text = node?.textContent?.trim() ?? '';
+  const match = text.match(/\d+/);
+  return match ? Number.parseInt(match[0], 10) : null;
+};
+
 const detectors = {
-  D1_SPINNER: () => collectVisible('[aria-busy="true"], [role="progressbar"], .animate-spin, svg[aria-label*="loading" i]'),
-  D2_STOP_BUTTON: () => collectVisible('button', (btn) => {
-    const aria = btn.getAttribute('aria-label') || '';
-    const text = btn.textContent || '';
-    return /stop|остановить/i.test(aria + ' ' + text);
-  }),
-  D3_CARD_HEUR: () => collectVisible('[data-testid*="task" i]', (node) => /running|выполняется/i.test(node.textContent || ''))
+  D1_SPINNER: () =>
+    collectVisible('[aria-busy="true"], [role="progressbar"], .animate-spin, svg[aria-label*="loading" i]').map((node) => ({
+      node,
+      taskKey: null,
+      countHint: extractSpinnerHint(node)
+    })),
+  D2_STOP_BUTTON: () =>
+    collectVisible('button', (btn) => {
+      const aria = btn.getAttribute('aria-label') || '';
+      const text = btn.textContent || '';
+      return /stop|остановить/i.test(aria + ' ' + text);
+    }).map((btn) => ({
+      node: btn,
+      taskKey: resolveTaskKey(btn)
+    })),
+  D3_CARD_HEUR: () =>
+    collectVisible(TASK_CARD_SELECTOR, (node) => /running|выполняется/i.test(node.textContent || '')).map((card) => ({
+      node: card,
+      taskKey: resolveTaskKey(card)
+    }))
 };
 
 const SNAPSHOT_MIN_INTERVAL = 1000; // 1 scan/sec максимум
@@ -374,12 +419,31 @@ function snapshot(){
     }
   }).filter(({ matches }) => matches.length > 0);
 
-  const count = collected.reduce((acc, { matches }) => acc + matches.length, 0);
-  const active = count > 0;
-  const signals = collected.map(({ detector, matches }) => ({
-    detector,
-    evidence: matches.map(describeNode).join(', ')
-  }));
+  let spinnerHint = 0;
+  let spinnerPresence = 0;
+  const taskKeys = new Set();
+
+  const signals = collected.map(({ detector, matches }) => {
+    matches.forEach(({ node, taskKey, countHint }) => {
+      if (taskKey) {
+        taskKeys.add(taskKey);
+      }
+      if (detector === 'D1_SPINNER') {
+        spinnerPresence += 1;
+        if (Number.isFinite(countHint)) {
+          spinnerHint = Math.max(spinnerHint, countHint);
+        }
+      }
+    });
+
+    const evidenceParts = matches.map(({ taskKey, node }) => taskKey || describeNode(node));
+    const uniqueEvidence = Array.from(new Set(evidenceParts));
+    return { detector, evidence: uniqueEvidence.join(', ') };
+  });
+
+  const uniqueTasks = taskKeys.size;
+  const count = Math.max(uniqueTasks, spinnerHint, spinnerPresence > 0 ? 1 : 0);
+  const active = count > 0 || collected.length > 0;
 
   chrome.runtime.sendMessage({ type:'TASKS_UPDATE', origin: location.origin, active, count, signals, ts: Date.now() });
 }
