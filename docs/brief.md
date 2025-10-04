@@ -102,7 +102,11 @@
         "required": ["detector", "evidence"],
         "properties": {
           "detector": {"type": "string", "enum": ["D1_SPINNER","D2_STOP_BUTTON","D3_CARD_HEUR" ]},
-          "evidence": {"type": "string"}
+          "evidence": {"type": "string"},
+          "taskKey": {
+            "type": "string",
+            "description": "Стабильный идентификатор задачи; передаётся детекторами, способными выделить конкретную карточку"
+          }
         }
       }
     },
@@ -111,7 +115,7 @@
 }
 ```
 
-> **Примечание:** идентификатор вкладки background получает из `sender.tab.id`, поэтому поле `tabId` в сообщении не требуется. Контент‑скрипт не вычисляет `tabId`, а разрешение `tabs` используется только на стороне background для пингов и очистки состояния вкладок (см. §§2/8/10). Значение `D3_CARD_HEUR` зарезервировано для релиза v0.2.0+.
+> **Примечание:** идентификатор вкладки background получает из `sender.tab.id`, поэтому поле `tabId` в сообщении не требуется. Контент‑скрипт не вычисляет `tabId`, а разрешение `tabs` используется только на стороне background для пингов и очистки состояния вкладок (см. §§2/8/10). Значение `D3_CARD_HEUR` зарезервировано для релиза v0.2.0+. Поле `taskKey` заполняется только детекторами, которые могут привязать сигнал к конкретной карточке задачи (D2, в будущем D3); для спиннеров оно опускается.
 
 ### 5.2. Хранимое агрегированное состояние у background
 
@@ -137,7 +141,19 @@
           "active": {"type": "boolean"},
           "count": {"type": "integer"},
           "updatedAt": {"type": "number"},
-          "signals": {"type": "array", "items": {"type":"string"}}
+          "signals": {
+            "type": "array",
+            "description": "Последний снимок сигналов от вкладки; используется popup для отображения карточек",
+            "items": {
+              "type": "object",
+              "required": ["detector", "evidence"],
+              "properties": {
+                "detector": {"type": "string"},
+                "evidence": {"type": "string"},
+                "taskKey": {"type": "string"}
+              }
+            }
+          }
         }
       }
     },
@@ -146,6 +162,8 @@
   }
 }
 ```
+
+Background хранит `signals` в виде последнего снимка сообщений: каждый объект содержит `detector`, `evidence` и (если был передан) `taskKey`. Popup группирует записи по `taskKey`, чтобы показывать задачи без дублей и отображать источник (по `detector`/`evidence`) при отладке. Если `taskKey` отсутствует (спиннеры), записи объединяются в отдельную секцию вкладки и учитываются только в расчёте числового счётчика.
 
 ### 5.3. Настройки пользователя (UI → storage.sync)
 
@@ -195,8 +213,9 @@
 
 **Нормализация задач и расчёт `count`**
 
-* Контент-скрипт формирует единый список сигналов, где каждая запись содержит `detector`, `evidence` и (если применимо) `taskKey`.
+* Контент-скрипт формирует единый список сигналов, где каждой найденной сущности соответствует запись с `detector`, `evidence` и (если применимо) `taskKey`.
 * Для спиннеров дополнительно фиксируем `countHint` (цифры внутри индикатора); значение участвует только в расчёте `count` и не передаётся в `signals`.
+* `evidence` содержит `taskKey`, если он вычислен, иначе fallback по `describeNode(node)` (см. §18) для диагностики и отображения в popup.
 * `taskKey` строится по правилу: `data-task-id` → `data-testid` карточки → `aria-labelledby` → текстовый селектор `describeNode(node)` (см. §18). Это позволяет идентифицировать одну и ту же задачу, даже если её обнаружили разные детекторы.
 * Поле `count` вычисляется как максимум из трёх величин: числа уникальных `taskKey`, максимального `countHint` от спиннеров и факта наличия хотя бы одного спиннера (минимум 1 при видимом индикаторе без цифр). В уведомлениях показываем только факт 0/не 0.
 
@@ -206,7 +225,7 @@
 
 ## 7. UX и поведение
 
-* **Popup (MVP v0.1.0)**: список активных задач с названием вкладки/временной меткой; название берём из `sender.tab.title` и кэшируем в `state.tabs[tabId].title` (если `title` пустое, используем `origin`). «Нет активных» — серый текст. Ссылка «Открыть Codex».
+* **Popup (MVP v0.1.0)**: список активных задач с названием вкладки/временной меткой; название берём из `sender.tab.title` и кэшируем в `state.tabs[tabId].title` (если `title` пустое, используем `origin`). Для списка используем `state.tabs[tabId].signals`, группируя записи по `taskKey` и показывая человекочитаемую подпись из `evidence`; «Нет активных» — серый текст. Ссылка «Открыть Codex».
 * **Системное уведомление (MVP v0.1.0)**: один раз при переходе `>0 → 0`, текст: `Все задачи в Codex завершены`; кнопка `ОК` обязательна.
 * **Иконка расширения (v0.2.0+)**: бейдж с точным числом активных задач (суммарно по вкладке); при `count = 0` бейдж очищается.
 * **Звук уведомления (v0.2.0+)**: при включенной настройке `sound` проигрывается короткий клип (через offscreen document).
@@ -277,6 +296,7 @@
 
 1. Одна вкладка, одна задача → дождаться завершения → одно уведомление; убедиться, что текст «Все задачи в Codex завершены» и кнопка «ОК» отображаются; в popup карточка задачи отображает название вкладки (по `title`).
 2. Несколько вкладок (2–3), задачи заканчиваются в разное время → уведомление только когда все завершились.
+2a. Проверить, что `state.tabs[tabId].signals` сохраняет последнюю выборку: у карточек присутствует `taskKey` (для кнопок Stop) и человекочитаемое `evidence`, а записи без `taskKey` (спиннеры) группируются отдельно и не создают дубликаты задач в popup.
 3. Краткий всплеск спиннера (перезапуск) → уведомление **не** показывается (антидребезг).
 4. Неактивная вкладка (свернута) → уведомление приходит.
 5. Вкладку закрыли во время выполнения → не считать её активной после закрытия.
@@ -297,7 +317,7 @@
 
 ## 13. Критерии приёмки (AC)
 
-* AC‑1 (MVP v0.1.0): При наличии хотя бы одной активной задачи в любой вкладке popup и агрегированное состояние отражают ненулевой `count` и не сбрасываются до завершения всех задач.
+* AC‑1 (MVP v0.1.0): При наличии хотя бы одной активной задачи в любой вкладке popup и агрегированное состояние отражают ненулевой `count` и не сбрасываются до завершения всех задач; popup использует `state.tabs[tabId].signals` и не дублирует задачи с одинаковым `taskKey`.
 * AC‑1b (v0.2.0+): Иконка показывает ненулевой бейдж с точным числом активных задач при включённой опции.
 * AC‑2 (MVP v0.1.0): Уведомление «Все задачи в Codex завершены» с кнопкой «ОК» показывается **ровно один раз** при переходе `>0 → 0` с задержкой по настройке.
 * AC‑3: Расширение не инициирует сетевые запросы за пределы домена браузера и не отправляет пользовательские данные наружу.
@@ -425,20 +445,20 @@ let idleHandle = null;
 let fallbackTimer = null;
 
 function snapshot(){
-  const collected = Object.entries(detectors).map(([detector, fn]) => {
-    try {
-      const matches = fn();
-      return { detector, matches };
-    } catch {
-      return { detector, matches: [] };
-    }
-  }).filter(({ matches }) => matches.length > 0);
-
   let spinnerHint = 0;
   let spinnerPresence = 0;
   const taskKeys = new Set();
+  const seenSignals = new Set();
+  const signals = [];
 
-  const signals = collected.map(({ detector, matches }) => {
+  Object.entries(detectors).forEach(([detector, fn]) => {
+    let matches = [];
+    try {
+      matches = fn();
+    } catch {
+      matches = [];
+    }
+
     matches.forEach(({ node, taskKey, countHint }) => {
       if (taskKey) {
         taskKeys.add(taskKey);
@@ -449,16 +469,23 @@ function snapshot(){
           spinnerHint = Math.max(spinnerHint, countHint);
         }
       }
-    });
 
-    const evidenceParts = matches.map(({ taskKey, node }) => taskKey || describeNode(node));
-    const uniqueEvidence = Array.from(new Set(evidenceParts));
-    return { detector, evidence: uniqueEvidence.join(', ') };
+      const evidence = taskKey || describeNode(node);
+      const signature = `${detector}::${taskKey ?? evidence}`;
+      if (seenSignals.has(signature)) return;
+      seenSignals.add(signature);
+
+      const signal = { detector, evidence };
+      if (taskKey) {
+        signal.taskKey = taskKey;
+      }
+      signals.push(signal);
+    });
   });
 
   const uniqueTasks = taskKeys.size;
   const count = Math.max(uniqueTasks, spinnerHint, spinnerPresence > 0 ? 1 : 0);
-  const active = count > 0 || collected.length > 0;
+  const active = count > 0 || signals.length > 0;
 
   chrome.runtime.sendMessage({ type:'TASKS_UPDATE', origin: location.origin, active, count, signals, ts: Date.now() });
 }
@@ -589,7 +616,18 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
     const guaranteedCount = msg.count; // по схеме 5.1 поле обязательно
     const inferredActive = guaranteedCount > 0 ? true : msg.active;
     const title = sender.tab?.title?.trim();
-    nextState.tabs = { ...nextState.tabs, [tabId]: { origin: msg.origin, title: title || msg.origin, active: inferredActive, count: guaranteedCount, updatedAt: Date.now(), signals: msg.signals?.map(s=>s.detector)||[] } };
+    nextState.tabs = { ...nextState.tabs, [tabId]: {
+      origin: msg.origin,
+      title: title || msg.origin,
+      active: inferredActive,
+      count: guaranteedCount,
+      updatedAt: Date.now(),
+      signals: (msg.signals || []).map(({ detector, evidence, taskKey }) => ({
+        detector,
+        evidence,
+        ...(taskKey ? { taskKey } : {})
+      }))
+    } };
     const prevTotal = nextState.lastTotal;
     const total = Object.values(nextState.tabs).reduce((acc,t) => acc + (t.count || 0), 0);
     nextState.lastTotal = total;
