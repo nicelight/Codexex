@@ -229,7 +229,7 @@
 * При каждом `TASKS_UPDATE` пересчитываем `totalActive` = сумма `tab.active`.
 * Если `totalActive == 0` и раньше было `>0`, стартуем `debounce` (`debounceMs` из настроек). По истечении проверяем ещё раз; если всё ещё `0` — уведомляем.
 * Ежеминутный `PING` из background (через `chrome.tabs.query` + `chrome.tabs.sendMessage`, требует разрешения `tabs`) приводит к `chrome.runtime.onMessage`‑слушателю в content‑script, который вызывает `snapshot()` и восстанавливает состояние вкладки.
-* Состояние вкладки (tabId) очищается при событии `tabs.onRemoved`.
+* Состояние вкладки (tabId) очищается обработчиком `chrome.tabs.onRemoved`: фон читает `state`, удаляет `state.tabs[tabId]`, пересчитывает `lastTotal`, при обнулении сбрасывает `debounce.since` и сохраняет обновлённый объект.
 
 ---
 
@@ -248,9 +248,10 @@
 3. Краткий всплеск спиннера (перезапуск) → уведомление **не** показывается (антидребезг).
 4. Неактивная вкладка (свернута) → уведомление приходит.
 5. Вкладку закрыли во время выполнения → не считать её активной после закрытия.
-6. RU/EN локали → корректные тексты.
-7. Опция `sound` → звук присутствует/отсутствует.
-8. Принудительно «усыпить» вкладку → дождаться `PING` и убедиться, что content‑script отвечает `snapshot()` и состояние восстанавливается.
+6. Проверить обработчик `tabs.onRemoved`: закрыть вкладку, убедиться по popup/логу, что запись о вкладке удалена и антидребезг сброшен.
+7. RU/EN локали → корректные тексты.
+8. Опция `sound` → звук присутствует/отсутствует.
+9. Принудительно «усыпить» вкладку → дождаться `PING` и убедиться, что content‑script отвечает `snapshot()` и состояние восстанавливается.
 
 ---
 
@@ -380,6 +381,22 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
 
     chrome.storage.session.set({ state: nextState });
   });
+});
+
+chrome.tabs.onRemoved.addListener(async (tabId) => {
+  const { state } = await chrome.storage.session.get(['state']);
+  const nextState = {
+    ...DEFAULT_STATE,
+    ...state,
+    tabs: { ...DEFAULT_STATE.tabs, ...state?.tabs },
+    debounce: { ...DEFAULT_STATE.debounce, ...state?.debounce }
+  };
+  delete nextState.tabs[tabId];
+  nextState.lastTotal = Object.values(nextState.tabs).reduce((acc, tab) => acc + (tab.active ? 1 : 0), 0);
+  if (nextState.lastTotal === 0) {
+    nextState.debounce.since = 0;
+  }
+  await chrome.storage.session.set({ state: nextState });
 });
 
 chrome.alarms.create('codex-poll', { periodInMinutes: 1 });
