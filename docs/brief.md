@@ -173,12 +173,14 @@
 
 * Ищем кнопки в карточках задач на главной: `button[aria-label*="Stop" i], button:has(svg[aria-label*="stop" i]), button:contains("Stop"|"Остановить")` (приблизительно; реализация через обход и проверку текста/ARIA).
 * Каждый видимый экземпляр такой кнопки добавляется в коллекцию результатов детектора.
+* Детектор должен реагировать на изменение текста кнопки без замены DOM-узла, поэтому `MutationObserver` обязан отслеживать изменения `characterData` (см. §18).
 
 **D3 — Карточки задач (эвристика)**
 
 * Учитываем элементы с data‑атрибутами `data-testid*="task"`, заголовки задач.
 * Если карточка помечена как «Running command…»/локализованный эквивалент — считаем активной.
 * Детектор возвращает набор карточек, удовлетворяющих условиям и прошедших проверку видимости.
+* Аналогично D2, изменения текста внутри карточек (без подмены узлов) должны фиксироваться благодаря `MutationObserver` с `characterData:true` (см. §18).
 
 **Политика решения:** активной считаем вкладку, если сработал **любой** детектор. Поле `count` — сумма размеров всех коллекций (для бейджа и агрегации). В уведомлениях показываем только факт 0/не 0.
 
@@ -235,6 +237,7 @@
 * При каждом `TASKS_UPDATE` пересчитываем `totalActive` как сумму `tab.count` (общее число совпадений по вкладкам).
 * Если `totalActive == 0` и раньше было `>0`, стартуем `debounce` (`debounceMs` из настроек). По истечении проверяем ещё раз; если всё ещё `0` — уведомляем.
 * Ежеминутный `PING` из background (через `chrome.tabs.query` + `chrome.tabs.sendMessage`, требует разрешения `tabs`) приводит к `chrome.runtime.onMessage`‑слушателю в content‑script, который вызывает `requestSnapshot()` и восстанавливает состояние вкладки.
+* Логика снапшота опирается на `MutationObserver`, который фиксирует структурные и текстовые изменения (`characterData:true`, см. §18), чтобы обновления контента детекторов D2/D3 попадали в обработку даже без замены узлов.
 * Состояние вкладки (tabId) очищается обработчиком `chrome.tabs.onRemoved`: фон читает `state`, удаляет `state.tabs[tabId]`, пересчитывает `lastTotal`, при обнулении сбрасывает `debounce.since` и сохраняет обновлённый объект.
 
 ---
@@ -427,7 +430,13 @@ function requestSnapshot() {
 }
 
 const mo = new MutationObserver(() => requestSnapshot());
-mo.observe(document.documentElement, { childList:true, subtree:true, attributes:true });
+mo.observe(document.documentElement, {
+  childList: true,
+  subtree: true,
+  attributes: true,
+  characterData: true,
+  characterDataOldValue: true // фиксируем текстовые изменения для детекторов D2/D3
+});
 
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type === 'PING') requestSnapshot();
