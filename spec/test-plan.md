@@ -4,6 +4,7 @@
 - Подтвердить соответствие контент-скрипта и background спецификациям JSON Schema.
 - Проверить корректность антидребезга и уникальность уведомлений.
 - Убедиться, что popup отображает актуальное состояние задач.
+- Для релизов v0.2.0+: подтвердить управление пользовательскими настройками и их применение.
 
 ## Область покрытия
 - Юнит-тесты детекторов и агрегатора.
@@ -31,20 +32,25 @@
    - Given вкладка с `count>0` закрывается (без финального сообщения),
    - When background получает событие `tabs.onRemoved`,
    - Then состояние вкладки удаляется, `lastTotal` пересчитывается, уведомление не создаётся, если есть другие активные задачи.
+6. **AC6 — Синхронизация пользовательских настроек (v0.2.0+)**
+   - Given в `chrome.storage.sync.settings` записаны значения по схеме `CodexTasksUserSettings`,
+   - When пользователь изменяет `debounceMs`, `autoDiscardableOff`, `sound` или `showBadgeCount` через UI,
+   - Then background валидирует объект, обновляет `AggregatedState.debounce.ms`, применяет `autoDiscardable` к вкладкам и синхронно обновляет бейдж и звуковой режим.
 
 ## Типы тестов
 - **Unit**
   - Детекторы: корректное определение активности по тестовым DOM-фрагментам.
   - Агрегатор: переходы состояний `lastTotal`, антидребезг.
+  - Settings: валидация объекта настроек, применение дефолтов и пересчёт `debounceMs`.
 - **Contract**
   - Валидация OpenAPI: `POST /background/tasks-update`, `GET /background/state`, `GET /popup/state`.
-  - JSON Schema: сериализация `AggregatedState` и `PopupRenderState`.
+  - JSON Schema: сериализация `AggregatedState`, `PopupRenderState` и `CodexTasksUserSettings`.
 - **Integration**
-  - Симуляция Chrome APIs (tabs, alarms, notifications) через фейки. Проверка сценариев UC-1..UC-4.
+  - Симуляция Chrome APIs (tabs, alarms, notifications, storage.sync) через фейки. Проверка сценариев UC-1..UC-4 и изменения настроек.
 
 ## Тестовые данные
 - DOM-фрагменты для детекторов D1/D2/D3 на RU/EN интерфейсах.
-- Моки Chrome API: `tabs.query`, `notifications.create`, `storage.session`.
+- Моки Chrome API: `tabs.query`, `notifications.create`, `storage.session`, `storage.sync`.
 - Набор последовательностей сообщений для воспроизведения сценариев (см. `spec/use-cases.md`).
 
 ## Метрики и отчётность

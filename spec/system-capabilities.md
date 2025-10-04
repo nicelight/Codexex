@@ -10,6 +10,7 @@
 | CAP-04 | Применение `autoDiscardableOff` для вкладок Codex. | Старт расширения, получение обновления состояния, изменения настроек (v0.2.0+). | Background service worker, Chrome Tabs API. | Нет дополнительного состояния, действует напрямую. |
 | CAP-05 | Отображение агрегированного состояния в popup. | Пользователь открывает popup. | Popup UI, background. | Кэш состояния (чтение из `chrome.storage.session.state`). |
 | CAP-06 | Периодический пинг вкладок для восстановления состояния после сна сервис-воркера. | Срабатывание `chrome.alarms` (`codex-poll`). | Background service worker. | Запрос `PING` → вкладка отвечает актуальным `TASKS_UPDATE`. |
+| CAP-07 | Управление пользовательскими настройками (v0.2.0+) и их применением. | Изменения UI/синхронизация `chrome.storage.sync`. | Background service worker, popup/options UI. | `Settings` по схеме `CodexTasksUserSettings`. |
 
 ## Состояния системы
 
@@ -23,7 +24,12 @@
 ### AggregatedState (в background)
 - `tabs`: словарь `tabId -> { origin, title, count, active, updatedAt, signals? }`, где `updatedAt` — Unix-время (мс) последнего обновления, а `signals` хранит последний снимок детекторов и может отсутствовать для вкладок без детальных сигналов.
 - `lastTotal`: сумма `count` всех вкладок.
-- `debounce`: `{ ms, since }` — параметры антидребезга, где `since` фиксирует Unix-время (мс) начала окна и сбрасывается в `0`, когда окно неактивно.
+- `debounce`: `{ ms, since }` — параметры антидребезга, где `since` фиксирует Unix-время (мс) начала окна и сбрасывается в `0`, когда окно неактивно; `ms` наследуется из пользовательских настроек с дефолтом 12 000 мс (v0.2.0+).
+
+### UserSettings (v0.2.0+)
+- `chrome.storage.sync.settings` хранит объект по схеме `CodexTasksUserSettings`.
+- Поля: `debounceMs` (0–60000 мс), `sound` (звук уведомления), `autoDiscardableOff` (принудительное `autoDiscardable=false`), `showBadgeCount` (показывать счётчик на иконке).
+- Настройки влияют на антидребезг, применение запрета авто-выгрузки, управление бейджем и звуковым сигналом.
 
 ### NotificationState
 - Косвенно хранится через системные уведомления; идемпотентность достигается проверкой `lastTotal` и `debounce.since`.
@@ -37,7 +43,7 @@
 | Закрытие вкладки (`tabs.onRemoved`) | `AggregatedState.tabs`, `AggregatedState.lastTotal` | Удалить вкладку, пересчитать сумму, при нуле сбросить `debounce.since`. |
 | Alarm `codex-poll` | Нет непосредственного состояния, отправка `PING` | Обеспечивает повторное обновление `TaskActivitySnapshot` при возобновлении воркера. |
 | Открытие popup | Нет изменений (только чтение) | Popup читает `AggregatedState` и отображает данные. |
-| Обновление настроек (v0.2.0+) | `debounce.ms`, поведение `autoDiscardable` | Синхронизация `settings`, применение к вкладкам. |
+| Обновление настроек (v0.2.0+) | `Settings`, `AggregatedState.debounce.ms`, `autoDiscardable`, бейдж, звук | Принять значения по схеме, сохранить в `chrome.storage.sync`, обновить антидребезг, бейдж и звуковой режим. |
 
 ## Жизненный цикл
 

@@ -39,6 +39,7 @@
    - Модуль `notifications` контролирует антидребезг, создаёт уведомления.
    - Модуль `alarms` управляет `chrome.alarms`, пингует вкладки.
    - Хендлер `tabs.onRemoved` поддерживает консистентность состояния.
+   - (v0.2.0+) Модуль `settings` валидирует объект по `contracts/settings.schema.json`, синхронизирует `chrome.storage.sync`, применяет `debounceMs`, `autoDiscardableOff`, `sound`, `showBadgeCount`.
 4. **Popup**
    - Простое отображение списка вкладок: использование HTMX/VanillaJS + шаблонов.
    - Запрос состояния через messaging (адаптер реализует вызов `/popup/state`).
@@ -66,3 +67,8 @@
 - Все Acceptance Criteria из `spec/test-plan.md` выполнены автоматизированными тестами.
 - Manifest проходит проверку Chrome Web Store без предупреждений.
 - README дополнено инструкцией по сборке и установке unpacked расширения.
+
+## Дополнительно для релиза v0.2.0
+- Реализованы UI/опции для редактирования настроек `CodexTasksUserSettings`.
+- Background синхронизирует и валидирует настройки, применяет `autoDiscardableOff`, `debounceMs`, `sound`, `showBadgeCount` ко всем открытым вкладкам.
+- Покрытие тестами сценариев изменения настроек и их влияния на уведомления, бейдж и autoDiscardable.

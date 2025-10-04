@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codex.tasks/contracts/settings.schema.json",
+  "title": "CodexTasksUserSettings",
+  "description": "Пользовательские настройки расширения, синхронизируемые через chrome.storage.sync (v0.2.0+)",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "debounceMs": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 60000,
+      "default": 12000,
+      "description": "Продолжительность окна антидребезга в миллисекундах"
+    },
+    "sound": {
+      "type": "boolean",
+      "default": false,
+      "description": "Воспроизводить ли звуковое уведомление при завершении задач"
+    },
+    "autoDiscardableOff": {
+      "type": "boolean",
+      "default": true,
+      "description": "Отключает авто-выгрузку вкладок Codex через chrome.tabs.update({ autoDiscardable: false })"
+    },
+    "showBadgeCount": {
+      "type": "boolean",
+      "default": true,
+      "description": "Отображать ли количество активных задач на бейдже иконки расширения"
+    }
+  }
+}
