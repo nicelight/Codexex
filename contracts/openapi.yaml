@@ -70,3 +70,6 @@ paths:
                 $ref: './dto/popup-state.schema.json'
 components:
   securitySchemes: {}
+  schemas:
+    UserSettings:
+      $ref: './settings.schema.json'
