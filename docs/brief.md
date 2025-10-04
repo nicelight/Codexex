@@ -167,18 +167,20 @@
 * Если глобальный индикатор отображает числовой счётчик (например, «2» внутри крутящегося бейджа), извлекаем цифру и считаем её значением `count` для вкладки.
 * Негативные признаки: отображение спиннера внутри скрытых контейнеров (`display:none`, `aria-hidden=true`) — игнорировать.
 * Обязательные проверки видимости: элемент и его предки не помечены `aria-hidden="true"`; `offsetParent` существует (либо стиль `position:fixed`), `getComputedStyle` не возвращает `display:none`, `visibility:hidden|collapse`, `opacity:0`.
+* Детектор возвращает **коллекцию найденных видимых элементов** (включая счётчики внутри), чтобы downstream‑логика могла сосчитать все совпадения.
 
 **D2 — Кнопка Stop/Остановить**
 
 * Ищем кнопки в карточках задач на главной: `button[aria-label*="Stop" i], button:has(svg[aria-label*="stop" i]), button:contains("Stop"|"Остановить")` (приблизительно; реализация через обход и проверку текста/ARIA).
-* Наличие хотя бы одной такой кнопки = активная задача.
+* Каждый видимый экземпляр такой кнопки добавляется в коллекцию результатов детектора.
 
 **D3 — Карточки задач (эвристика)**
 
 * Учитываем элементы с data‑атрибутами `data-testid*="task"`, заголовки задач.
 * Если карточка помечена как «Running command…»/локализованный эквивалент — считаем активной.
+* Детектор возвращает набор карточек, удовлетворяющих условиям и прошедших проверку видимости.
 
-**Политика решения:** активной считаем вкладку, если сработал **любой** детектор; `count` — наивное число совпадений (для бейджа). В уведомлениях показываем только факт 0/не 0.
+**Политика решения:** активной считаем вкладку, если сработал **любой** детектор. Поле `count` — сумма размеров всех коллекций (для бейджа и агрегации). В уведомлениях показываем только факт 0/не 0.
 
 ---
 
@@ -230,7 +232,7 @@
 ## 10. Логика антидребезга и учёт вкладок
 
 * Background хранит `state` с полями `tabs`, `lastTotal` и `debounce` (в `debounce.since` фиксируем момент кандидата на уведомление, в `debounce.ms` — длительность из настроек).
-* При каждом `TASKS_UPDATE` пересчитываем `totalActive` = сумма `tab.active`.
+* При каждом `TASKS_UPDATE` пересчитываем `totalActive` как сумму `tab.count` (общее число совпадений по вкладкам).
 * Если `totalActive == 0` и раньше было `>0`, стартуем `debounce` (`debounceMs` из настроек). По истечении проверяем ещё раз; если всё ещё `0` — уведомляем.
 * Ежеминутный `PING` из background (через `chrome.tabs.query` + `chrome.tabs.sendMessage`, требует разрешения `tabs`) приводит к `chrome.runtime.onMessage`‑слушателю в content‑script, который вызывает `requestSnapshot()` и восстанавливает состояние вкладки.
 * Состояние вкладки (tabId) очищается обработчиком `chrome.tabs.onRemoved`: фон читает `state`, удаляет `state.tabs[tabId]`, пересчитывает `lastTotal`, при обнулении сбрасывает `debounce.since` и сохраняет обновлённый объект.
@@ -333,17 +335,24 @@ const isVisible = (node) => {
   return true;
 };
 
-const firstVisible = (selector, matcher = () => true) =>
-  Array.from(document.querySelectorAll(selector)).find((el) => isVisible(el) && matcher(el));
+const collectVisible = (selector, matcher = () => true) =>
+  Array.from(document.querySelectorAll(selector)).filter((el) => isVisible(el) && matcher(el));
+
+const describeNode = (node) => {
+  const tag = node?.tagName?.toLowerCase() ?? 'unknown';
+  const id = node?.id ? `#${node.id}` : '';
+  const cls = node?.classList?.value ? `.${node.classList.value.split(/\s+/).filter(Boolean).join('.')}` : '';
+  return `${tag}${id}${cls}`;
+};
 
 const detectors = {
-  D1_SPINNER: () => !!firstVisible('[aria-busy="true"], [role="progressbar"], .animate-spin, svg[aria-label*="loading" i]'),
-  D2_STOP_BUTTON: () => !!firstVisible('button', (btn) => {
+  D1_SPINNER: () => collectVisible('[aria-busy="true"], [role="progressbar"], .animate-spin, svg[aria-label*="loading" i]'),
+  D2_STOP_BUTTON: () => collectVisible('button', (btn) => {
     const aria = btn.getAttribute('aria-label') || '';
     const text = btn.textContent || '';
     return /stop|остановить/i.test(aria + ' ' + text);
   }),
-  D3_CARD_HEUR: () => !!firstVisible('[data-testid*="task" i]', (node) => /running|выполняется/i.test(node.textContent || ''))
+  D3_CARD_HEUR: () => collectVisible('[data-testid*="task" i]', (node) => /running|выполняется/i.test(node.textContent || ''))
 };
 
 const SNAPSHOT_MIN_INTERVAL = 1000; // 1 scan/sec максимум
@@ -353,11 +362,22 @@ let idleHandle = null;
 let fallbackTimer = null;
 
 function snapshot(){
-  const signals = Object.entries(detectors)
-    .filter(([k,fn]) => { try { return fn(); } catch { return false; } })
-    .map(([k]) => ({ detector:k, evidence:'hit' }));
-  const active = signals.length > 0;
-  const count = Math.max(active ? signals.length : 0, 0);
+  const collected = Object.entries(detectors).map(([detector, fn]) => {
+    try {
+      const matches = fn();
+      return { detector, matches };
+    } catch {
+      return { detector, matches: [] };
+    }
+  }).filter(({ matches }) => matches.length > 0);
+
+  const count = collected.reduce((acc, { matches }) => acc + matches.length, 0);
+  const active = count > 0;
+  const signals = collected.map(({ detector, matches }) => ({
+    detector,
+    evidence: matches.map(describeNode).join(', ')
+  }));
+
   chrome.runtime.sendMessage({ type:'TASKS_UPDATE', origin: location.origin, active, count, signals, ts: Date.now() });
 }
 
@@ -433,9 +453,10 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
   chrome.storage.session.get(['state']).then(({ state }) => {
     const nextState = { ...DEFAULT_STATE, ...state, debounce: { ...DEFAULT_STATE.debounce, ...state?.debounce } };
     const guaranteedCount = msg.count; // по схеме 5.1 поле обязательно
-    nextState.tabs = { ...nextState.tabs, [tabId]: { origin: msg.origin, active: msg.active, count: guaranteedCount, updatedAt: Date.now(), signals: msg.signals?.map(s=>s.detector)||[] } };
+    const inferredActive = guaranteedCount > 0 ? true : msg.active;
+    nextState.tabs = { ...nextState.tabs, [tabId]: { origin: msg.origin, active: inferredActive, count: guaranteedCount, updatedAt: Date.now(), signals: msg.signals?.map(s=>s.detector)||[] } };
     const prevTotal = nextState.lastTotal;
-    const total = Object.values(nextState.tabs).reduce((acc,t) => acc + (t.active ? 1 : 0), 0);
+    const total = Object.values(nextState.tabs).reduce((acc,t) => acc + (t.count || 0), 0);
     nextState.lastTotal = total;
 
     if (prevTotal > 0 && total === 0) {
@@ -444,7 +465,7 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
       setTimeout(async () => {
         const stored = await chrome.storage.session.get(['state']);
         const currentState = { ...DEFAULT_STATE, ...stored.state, debounce: { ...DEFAULT_STATE.debounce, ...stored.state?.debounce } };
-        const stillZero = currentState.lastTotal === 0 && Object.values(currentState.tabs).every(t => !t.active);
+        const stillZero = currentState.lastTotal === 0 && Object.values(currentState.tabs).every(t => (t.count || 0) === 0);
         const debounceElapsed = currentState.debounce.since > 0 && (Date.now() - currentState.debounce.since) >= currentState.debounce.ms;
         if (stillZero && debounceElapsed) {
           chrome.notifications.create({ type:'basic', iconUrl:'assets/icon128.png', title:'Codex', message: 'Все задачи завершены ✅' });
@@ -467,7 +488,7 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
     debounce: { ...DEFAULT_STATE.debounce, ...state?.debounce }
   };
   delete nextState.tabs[tabId];
-  nextState.lastTotal = Object.values(nextState.tabs).reduce((acc, tab) => acc + (tab.active ? 1 : 0), 0);
+  nextState.lastTotal = Object.values(nextState.tabs).reduce((acc, tab) => acc + (tab.count || 0), 0);
   if (nextState.lastTotal === 0) {
     nextState.debounce.since = 0;
   }
