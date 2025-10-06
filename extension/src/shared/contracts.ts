@@ -4,7 +4,7 @@
  * Скрипт генерации: scripts/generate-contracts.mjs
  */
 
-import Ajv, { type ErrorObject, type ValidateFunction } from 'ajv';
+import Ajv, { type ErrorObject, type ValidateFunction } from 'ajv/dist/2020';
 import addFormats from 'ajv-formats';
 
 export interface ContractDescriptor<T> {
@@ -32,6 +32,7 @@ function createAjv(): Ajv {
     allowUnionTypes: true,
   });
   addFormats(ajv);
+  registerSchemas(ajv);
   return ajv;
 }
 
@@ -44,6 +45,7 @@ function getAjv(): Ajv {
 
 export function resetContractValidationState(): void {
   ajvInstance = undefined;
+  schemasRegistered = false;
   validateContentScriptHeartbeatFn = undefined;
   validateContentScriptTasksUpdateFn = undefined;
   validatePopupRenderStateFn = undefined;
@@ -483,6 +485,26 @@ export const codexTasksUserSettingsSchema = {
     },
   },
 } as const;
+
+const allSchemas = [
+  contentScriptHeartbeatSchema,
+  contentScriptTasksUpdateSchema,
+  popupRenderStateSchema,
+  aggregatedTabsStateSchema,
+  codexTasksUserSettingsSchema,
+] as const;
+
+let schemasRegistered = false;
+
+function registerSchemas(ajv: Ajv): void {
+  if (schemasRegistered) {
+    return;
+  }
+  for (const schema of allSchemas) {
+    ajv.addSchema(schema);
+  }
+  schemasRegistered = true;
+}
 
 let validateContentScriptHeartbeatFn: ValidateFunction<ContentScriptHeartbeat> | undefined;
 export function validateContentScriptHeartbeat(value: unknown): value is ContentScriptHeartbeat {
