@@ -8,7 +8,7 @@ import { initializeAggregator } from './aggregator';
 import { initializeNotifications } from './notifications';
 import { registerAlarms } from './alarms';
 
-chrome.runtime.onInstalled.addListener(() => {
+function bootstrapBackground(): void {
   initializeAggregator();
   initializeNotifications();
   registerAlarms();
@@ -17,4 +17,6 @@ chrome.runtime.onInstalled.addListener(() => {
     // eslint-disable-next-line no-console
     console.debug('[codex-tasks-watcher] background bootstrap placeholder');
   }
-});
+}
+
+chrome.runtime.onInstalled.addListener(bootstrapBackground);
