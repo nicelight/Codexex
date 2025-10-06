@@ -87,7 +87,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "codex.tasks/dto/content-update.json",
   "type": "object",
-  "required": ["type", "origin", "active", "count", "signals"],
+  "required": ["type", "origin", "active", "count", "signals", "ts"],
   "properties": {
     "type": {"const": "TASKS_UPDATE"},
     "origin": {"type": "string", "format": "uri"},
@@ -170,6 +170,7 @@
 Background хранит `signals` в виде последнего снимка сообщений: каждый объект содержит `detector`, `evidence` и (если был передан) `taskKey`. Popup группирует записи по `taskKey`, чтобы показывать задачи без дублей и отображать источник (по `detector`/`evidence`) при отладке. Если `taskKey` отсутствует (спиннеры), записи объединяются в отдельную секцию вкладки и учитываются только в расчёте числового счётчика.
 
 Дополнительно каждая вкладка хранит `lastSeenAt` (максимум между `updatedAt` и временем последнего `TASKS_HEARTBEAT`) и объект `heartbeat { lastReceivedAt, expectedIntervalMs, status, missedCount }`. Если heartbeat не приходит более чем `expectedIntervalMs * 3` (≈45 секунд), background помечает вкладку как `STALE`, инициирует повторный `PING` и не учитывает устаревшие данные при расчёте уведомлений.
+При первом `TASKS_UPDATE` для вкладки background создаёт heartbeat с `expectedIntervalMs = 15000`, `status = OK`, `missedCount = 0`, устанавливая `lastSeenAt` и `heartbeat.lastReceivedAt` по переданному `ts`.
 
 ### 5.3. Настройки пользователя (UI → storage.sync)
 
@@ -577,6 +578,8 @@ const MVP_SETTINGS = {
   autoDiscardableOff: true
 };
 
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 15000;
+
 // v0.2.0+: расширяем настройки синхронизации (звук, бейдж)
 const DEFAULT_SETTINGS = {
   ...MVP_SETTINGS,
@@ -623,17 +626,41 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
   const tabId = sender.tab?.id;
   applyAutoDiscardable(tabId);
   chrome.storage.session.get(['state']).then(({ state }) => {
-    const nextState = { ...DEFAULT_STATE, ...state, debounce: { ...DEFAULT_STATE.debounce, ...state?.debounce } };
+    const prevTabs = { ...DEFAULT_STATE.tabs, ...state?.tabs };
+    const nextState = {
+      ...DEFAULT_STATE,
+      ...state,
+      tabs: prevTabs,
+      debounce: { ...DEFAULT_STATE.debounce, ...state?.debounce }
+    };
     nextState.debounce.ms = settings.debounceMs;
     const guaranteedCount = msg.count; // по схеме 5.1 поле обязательно
     const inferredActive = guaranteedCount > 0 ? true : msg.active;
     const title = sender.tab?.title?.trim();
-    nextState.tabs = { ...nextState.tabs, [tabId]: {
+    const now = Date.now();
+    const snapshotTs = msg.ts;
+    const prevTab = prevTabs[tabId];
+    const heartbeat = prevTab?.heartbeat
+      ? { ...prevTab.heartbeat }
+      : {
+          lastReceivedAt: snapshotTs,
+          expectedIntervalMs: DEFAULT_HEARTBEAT_INTERVAL_MS,
+          status: 'OK',
+          missedCount: 0
+        };
+    const lastSeenAt = Math.max(
+      snapshotTs,
+      prevTab?.lastSeenAt ?? 0,
+      heartbeat.lastReceivedAt ?? 0
+    );
+    nextState.tabs = { ...prevTabs, [tabId]: {
       origin: msg.origin,
       title: title || msg.origin,
       active: inferredActive,
       count: guaranteedCount,
-      updatedAt: Date.now(),
+      updatedAt: now,
+      lastSeenAt,
+      heartbeat,
       signals: (msg.signals || []).map(({ detector, evidence, taskKey }) => ({
         detector,
         evidence,
