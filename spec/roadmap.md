@@ -98,6 +98,9 @@
 - [ ] **Contract tests**
   - [ ] Проверить соответствие DTO и state JSON Schema (`ajv`/`schemathesis`).
   - [ ] Валидировать OpenAPI (`contracts/openapi.yaml`) против реализованных эндпоинтов/background-хендлеров.
+- [ ] **Локальный HTTP-адаптер для тестов**
+  - [ ] Реализовать `msw` (или аналогичный) адаптер, эмулирующий маршруты `/background/tasks-update`, `/background/state`, `/popup/state`.
+  - [ ] Переиспользовать текущие background/popup-хендлеры и подключить контрактные проверки по `contracts/openapi.yaml` и схемам DTO/State/Settings согласно требованиям `spec/test-plan.md` и `spec/implementation-plan.md`.
 - [ ] **Integration tests**
   - [ ] Смоделировать ключевые use-cases (UC-1..UC-3 из `spec/use-cases.md`) с фейковым DOM и обменом сообщениями.
   - [ ] Проверить устойчивость к перезапуску service worker и закрытию вкладок.
