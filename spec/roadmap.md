@@ -47,12 +47,12 @@
 
 ## Фаза 1. Общие модули и контракты ⏳
 
-- [ ] **Генерация типов и валидация**
-  - [ ] Реализовать скрипт генерации типов из JSON Schema в `src/shared/contracts.ts` (использовать `json-schema-to-typescript` или альтернативу).
-  - [ ] Настроить runtime-валидацию DTO и состояния с помощью `ajv` (dev-зависимость), экспортировать helper-функции.
-- [ ] **Адаптер Chrome API**
-  - [ ] Создать thin-wrapper в `src/shared/chrome.ts` с типами и мок-стабами для тестов.
-  - [ ] Определить общий интерфейс логирования и утилиты времени (throttle/debounce, `requestIdleCallback` полифилл для тестов).
+- [x] **Генерация типов и валидация**
+  - [x] Реализовать скрипт генерации типов из JSON Schema в `src/shared/contracts.ts` (использовать `json-schema-to-typescript` или альтернативу).
+  - [x] Настроить runtime-валидацию DTO и состояния с помощью `ajv` (dev-зависимость), экспортировать helper-функции.
+- [x] **Адаптер Chrome API**
+  - [x] Создать thin-wrapper в `src/shared/chrome.ts` с типами и мок-стабами для тестов.
+  - [x] Определить общий интерфейс логирования и утилиты времени (throttle/debounce, `requestIdleCallback` полифилл для тестов).
 
 ## Фаза 2. Content-script ⏳ (v0.1.0)
 
