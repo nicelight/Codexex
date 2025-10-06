@@ -25,7 +25,7 @@
   "definitions": {
     "tabState": {
       "type": "object",
-      "required": ["origin", "title", "count", "active", "updatedAt"],
+      "required": ["origin", "title", "count", "active", "updatedAt", "lastSeenAt", "heartbeat"],
       "additionalProperties": false,
       "properties": {
         "origin": {
@@ -51,6 +51,13 @@
           "type": "number",
           "description": "Unix timestamp (мс) последнего обновления состояния вкладки"
         },
+        "lastSeenAt": {
+          "type": "number",
+          "description": "Unix timestamp (мс) последнего полученного сообщения (`TASKS_UPDATE` или `TASKS_HEARTBEAT`)"
+        },
+        "heartbeat": {
+          "$ref": "#/definitions/heartbeatState"
+        },
         "signals": {
           "type": "array",
           "items": {
@@ -65,6 +72,34 @@
           "$ref": "../dto/content-update.schema.json#/definitions/signal"
         }
       ]
+    },
+    "heartbeatState": {
+      "type": "object",
+      "required": ["lastReceivedAt", "expectedIntervalMs", "status", "missedCount"],
+      "additionalProperties": false,
+      "properties": {
+        "lastReceivedAt": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Unix timestamp (мс) последнего heartbeat"
+        },
+        "expectedIntervalMs": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 60000,
+          "description": "Ожидаемый интервал между heartbeat (мс)"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["OK", "STALE"],
+          "description": "Текущий статус heartbeat для вкладки"
+        },
+        "missedCount": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Сколько раз подряд ожидание heartbeat было нарушено"
+        }
+      }
     },
     "debounceState": {
       "type": "object",

@@ -34,10 +34,12 @@
    - Реализовать детекторы D1/D2 (модульная архитектура, возможность подмены).
    - Объединить результаты, вычислять `count`, формировать DTO по схеме.
    - Настроить throttle/ debounce отправки сообщений и реакцию на `PING`.
+   - Добавить heartbeat-таймер: каждые ≤15 секунд (а также сразу после `PING`) отправлять `TASKS_HEARTBEAT` по схеме `ContentScriptHeartbeat`, обновляя `lastScanAt`.
 3. **Background service worker**
    - Модуль `aggregator` обрабатывает `TASKS_UPDATE`, обновляет `AggregatedState` в storage.
+   - Модуль `aggregator` также принимает `TASKS_HEARTBEAT`, поддерживает поля `lastSeenAt`, `heartbeat.status`, `missedCount` и инициирует очистку устаревших вкладок.
    - Модуль `notifications` контролирует антидребезг, создаёт уведомления.
-   - Модуль `alarms` управляет `chrome.alarms`, пингует вкладки.
+   - Модуль `alarms` управляет `chrome.alarms`, пингует вкладки и переводит heartbeat в `STALE`, если нет свежих сигналов.
    - Хендлер `tabs.onRemoved` поддерживает консистентность состояния.
    - (v0.2.0+) Модуль `settings` валидирует объект по `contracts/settings.schema.json`, синхронизирует `chrome.storage.sync`, применяет `debounceMs`, `autoDiscardableOff`, `sound`, `showBadgeCount`.
 4. **Popup**
