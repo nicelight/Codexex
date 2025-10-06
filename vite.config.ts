@@ -11,6 +11,11 @@ const backgroundEntry = path.resolve(extensionRoot, 'src/background/index.ts');
 const contentEntry = path.resolve(extensionRoot, 'src/content/index.ts');
 const popupEntry = path.resolve(extensionRoot, 'src/popup/index.html');
 
+const entryFileNameMap = new Map([
+  [path.relative(extensionRoot, backgroundEntry), 'src/background.js'],
+  [path.relative(extensionRoot, contentEntry), 'src/content.js'],
+]);
+
 function manifestCopyPlugin(): PluginOption {
   return {
     name: 'codex-manifest-copy',
@@ -48,11 +53,13 @@ export default defineConfig({
       },
       output: {
         entryFileNames: (chunkInfo) => {
-          if (chunkInfo.facadeModuleId === backgroundEntry) {
-            return 'src/background.js';
-          }
-          if (chunkInfo.facadeModuleId === contentEntry) {
-            return 'src/content.js';
+          const facadeModuleId = chunkInfo.facadeModuleId;
+          if (facadeModuleId) {
+            const relativePath = path.relative(extensionRoot, facadeModuleId);
+            const explicitName = entryFileNameMap.get(relativePath);
+            if (explicitName) {
+              return explicitName;
+            }
           }
           return 'assets/[name]-[hash].js';
         },
