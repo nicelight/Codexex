@@ -54,23 +54,23 @@
   - [x] Создать thin-wrapper в `src/shared/chrome.ts` с типами и мок-стабами для тестов.
   - [x] Определить общий интерфейс логирования и утилиты времени (throttle/debounce, `requestIdleCallback` полифилл для тестов).
 
-## Фаза 2. Content-script ⏳ (v0.1.0)
+## Фаза 2. Content-script ✅ (v0.1.0)
 
-- [ ] **Бутстрап и обмен сообщениями**
-  - [ ] Создать точку входа `src/content/index.ts`, которая инициализирует детекторы, подписки и логирование (reuse shared logger).
-  - [ ] Зафиксировать контракт `ContentScriptTasksUpdate` и подготовить helper-функции (`postToBackground`, `onBackgroundEvent`), работающие с сообщением `TASKS_UPDATE` из `contracts/dto/content-update.schema.json`.
-- [ ] **Модульная система детекторов**
-  - [ ] Реализовать интерфейс `Detector` c методами `bootstrap`, `scan`, `teardown`, обеспечив смену локали без перезагрузки.
-  - [ ] Внедрить детекторы D1 (spinner) и D2 (Stop button) с DOM-фикстурами и unit-тестами для RU/EN.
-  - [ ] Подготовить стаб D3 (см. раздел `D3_CARD_HEUR` в `spec/detectors.md`) под feature flag и зафиксировать ограничения до v0.2.0.
-- [ ] **Пайплайн агрегации сигналов**
-  - [ ] Объединить результаты детекторов в `aggregateDetections`, нормализуя данные по DTO `TASKS_UPDATE`.
-  - [ ] Настроить антидребезг/throttle (включая `requestIdleCallback`/таймер) и задокументировать константы (`debounceMs`, `heartbeatMs`).
-  - [ ] Сохранять последнюю метку сканирования для дедупликации событий и покрыть граничные случаи unit-тестами.
-- [ ] **Связь с background и устойчивость**
-  - [ ] Обрабатывать входящие сообщения (`PING`, `RESET`, `REQUEST_STATE`) с повторным подключением после `runtime.lastError`.
-  - [ ] Поддерживать fail-safe таймер сканирования DOM (heartbeat): каждые ≤15 секунд формировать `TASKS_HEARTBEAT` по схеме `contracts/dto/content-heartbeat.schema.json` и экспортировать типы через `shared/contracts`.
-  - [ ] Логировать ключевые события (инициализация, heartbeat, ошибки отправки) и учитывать verbose-флаг из `chrome.storage.session`.
+- [x] **Бутстрап и обмен сообщениями**
+  - [x] Создать точку входа `src/content/index.ts`, которая инициализирует детекторы, подписки и логирование (reuse shared logger).
+  - [x] Зафиксировать контракт `ContentScriptTasksUpdate` и подготовить helper-функции (`postToBackground`, `onBackgroundEvent`), работающие с сообщением `TASKS_UPDATE` из `contracts/dto/content-update.schema.json`.
+- [x] **Модульная система детекторов**
+  - [x] Реализовать интерфейс `Detector` c методами `bootstrap`, `scan`, `teardown`, обеспечив смену локали без перезагрузки.
+  - [x] Внедрить детекторы D1 (spinner) и D2 (Stop button) с DOM-фикстурами и unit-тестами для RU/EN.
+  - [x] Подготовить стаб D3 (см. раздел `D3_CARD_HEUR` в `spec/detectors.md`) под feature flag и зафиксировать ограничения до v0.2.0.
+- [x] **Пайплайн агрегации сигналов**
+  - [x] Объединить результаты детекторов в `aggregateDetections`, нормализуя данные по DTO `TASKS_UPDATE`.
+  - [x] Настроить антидребезг/throttle (включая `requestIdleCallback`/таймер) и задокументировать константы (`debounceMs`, `heartbeatMs`).
+  - [x] Сохранять последнюю метку сканирования для дедупликации событий и покрыть граничные случаи unit-тестами.
+- [x] **Связь с background и устойчивость**
+  - [x] Обрабатывать входящие сообщения (`PING`, `RESET`, `REQUEST_STATE`) с повторным подключением после `runtime.lastError`.
+  - [x] Поддерживать fail-safe таймер сканирования DOM (heartbeat): каждые ≤15 секунд формировать `TASKS_HEARTBEAT` по схеме `contracts/dto/content-heartbeat.schema.json` и экспортировать типы через `shared/contracts`.
+  - [x] Логировать ключевые события (инициализация, heartbeat, ошибки отправки) и учитывать verbose-флаг из `chrome.storage.session`.
 
 ## Фаза 3. Background service worker ⏳ (v0.1.0)
 
