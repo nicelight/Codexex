@@ -1,5 +1,7 @@
 import type { ContractType } from './contracts';
 
+export type StorageChangeListener = Parameters<chrome.storage.StorageChangedEvent['addListener']>[0];
+
 export type RuntimeMessageListener = Parameters<chrome.runtime.ExtensionMessageEvent['addListener']>[0];
 export type AlarmListener = Parameters<chrome.alarms.AlarmEvent['addListener']>[0];
 export type TabRemovedListener = Parameters<chrome.tabs.TabRemovedEvent['addListener']>[0];
@@ -65,6 +67,7 @@ export interface ChromeLike {
   storage: {
     session: Pick<typeof chrome.storage.session, 'get' | 'set' | 'remove' | 'clear'>;
     sync?: Pick<typeof chrome.storage.sync, 'get' | 'set' | 'remove'>;
+    onChanged: ChromeEventLike<StorageChangeListener>;
   };
   tabs: {
     query: typeof chrome.tabs.query;
@@ -90,6 +93,9 @@ export interface ChromeLike {
   };
   scripting?: {
     executeScript: typeof chrome.scripting.executeScript;
+  };
+  i18n?: {
+    getUILanguage?: typeof chrome.i18n.getUILanguage;
   };
 }
 
@@ -141,7 +147,10 @@ function createCallbackInvoker(): typeof chrome.runtime.sendMessage {
   return handler;
 }
 
-function createInMemoryStorageArea(): Pick<typeof chrome.storage.session, 'get' | 'set' | 'remove' | 'clear'> {
+function createInMemoryStorageArea(
+  areaName: 'session' | 'sync',
+  onChanged: ChromeEventEmitter<StorageChangeListener>,
+): Pick<typeof chrome.storage.session, 'get' | 'set' | 'remove' | 'clear'> {
   const store = new Map<string, unknown>();
 
   function resolveGetKeys(keys?: string | string[] | Record<string, unknown> | null) {
@@ -174,18 +183,40 @@ function createInMemoryStorageArea(): Pick<typeof chrome.storage.session, 'get' 
       return result;
     },
     async set(items: Record<string, unknown>) {
+      const changes: Record<string, chrome.storage.StorageChange> = {};
       for (const [key, value] of Object.entries(items)) {
+        const oldValue = store.has(key) ? store.get(key) : undefined;
         store.set(key, value);
+        changes[key] = { oldValue, newValue: value };
+      }
+      if (Object.keys(changes).length > 0) {
+        onChanged.emit(changes, areaName);
       }
     },
     async remove(keys: string | string[]) {
       const list = Array.isArray(keys) ? keys : [keys];
+      const changes: Record<string, chrome.storage.StorageChange> = {};
       for (const key of list) {
-        store.delete(key);
+        if (store.has(key)) {
+          const oldValue = store.get(key);
+          store.delete(key);
+          changes[key] = { oldValue, newValue: undefined };
+        }
+      }
+      if (Object.keys(changes).length > 0) {
+        onChanged.emit(changes, areaName);
       }
     },
     async clear() {
+      if (store.size === 0) {
+        return;
+      }
+      const changes: Record<string, chrome.storage.StorageChange> = {};
+      for (const [key, value] of Array.from(store.entries())) {
+        changes[key] = { oldValue: value, newValue: undefined };
+      }
       store.clear();
+      onChanged.emit(changes, areaName);
     },
   };
 }
@@ -200,11 +231,13 @@ function mergeChromeLike(base: ChromeMock, overrides?: Partial<ChromeLike>): Chr
     storage: {
       session: overrides.storage?.session ?? base.storage.session,
       sync: overrides.storage?.sync ?? base.storage.sync,
+      onChanged: overrides.storage?.onChanged ?? base.storage.onChanged,
     },
     tabs: { ...base.tabs, ...overrides.tabs },
     alarms: { ...base.alarms, ...overrides.alarms },
     notifications: { ...base.notifications, ...overrides.notifications },
     scripting: overrides.scripting ?? base.scripting,
+    i18n: overrides.i18n ?? base.i18n,
   };
   return result;
 }
@@ -216,6 +249,9 @@ export interface ChromeMock extends ChromeLike {
     };
     alarms: {
       onAlarm: ChromeEventEmitter<AlarmListener>;
+    };
+    storage: {
+      onChanged: ChromeEventEmitter<StorageChangeListener>;
     };
     tabs: {
       onRemoved: ChromeEventEmitter<TabRemovedListener>;
@@ -229,6 +265,7 @@ export interface ChromeMock extends ChromeLike {
 export function createMockChrome(overrides?: Partial<ChromeLike>): ChromeMock {
   const runtimeOnMessage = new ChromeEventEmitter<RuntimeMessageListener>();
   const alarmsOnAlarm = new ChromeEventEmitter<AlarmListener>();
+  const storageOnChanged = new ChromeEventEmitter<StorageChangeListener>();
   const tabsOnRemoved = new ChromeEventEmitter<TabRemovedListener>();
   const tabsOnActivated = new ChromeEventEmitter<TabActivatedListener>();
   const tabsOnUpdated = new ChromeEventEmitter<TabUpdatedListener>();
@@ -243,8 +280,9 @@ export function createMockChrome(overrides?: Partial<ChromeLike>): ChromeMock {
       lastError: undefined,
     },
     storage: {
-      session: createInMemoryStorageArea(),
-      sync: createInMemoryStorageArea(),
+      session: createInMemoryStorageArea('session', storageOnChanged),
+      sync: createInMemoryStorageArea('sync', storageOnChanged),
+      onChanged: storageOnChanged.event,
     },
     tabs: {
       query: (async () => []) as typeof chrome.tabs.query,
@@ -300,12 +338,18 @@ export function createMockChrome(overrides?: Partial<ChromeLike>): ChromeMock {
     scripting: {
       executeScript: (async () => []) as typeof chrome.scripting.executeScript,
     },
+    i18n: {
+      getUILanguage: () => 'en',
+    },
     __events: {
       runtime: {
         onMessage: runtimeOnMessage,
       },
       alarms: {
         onAlarm: alarmsOnAlarm,
+      },
+      storage: {
+        onChanged: storageOnChanged,
       },
       tabs: {
         onRemoved: tabsOnRemoved,
