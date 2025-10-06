@@ -63,6 +63,15 @@
           "minimum": 0,
           "description": "Количество активных задач"
         },
+        "lastSeenAt": {
+          "type": "number",
+          "description": "Unix timestamp (мс) последнего контакта (heartbeat или update)"
+        },
+        "heartbeatStatus": {
+          "type": "string",
+          "enum": ["OK", "STALE"],
+          "description": "Текущее состояние heartbeat для вкладки"
+        },
         "signals": {
           "type": "array",
           "items": {

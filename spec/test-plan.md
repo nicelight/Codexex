@@ -36,17 +36,23 @@
    - Given в `chrome.storage.sync.settings` записаны значения по схеме `CodexTasksUserSettings`,
    - When пользователь изменяет `debounceMs`, `autoDiscardableOff`, `sound` или `showBadgeCount` через UI,
    - Then background валидирует объект, обновляет `AggregatedState.debounce.ms`, применяет `autoDiscardable` к вкладкам и синхронно обновляет бейдж и звуковой режим.
+7. **AC7 — Обнаружение и восстановление heartbeat**
+   - Given вкладка перестала отправлять `TASKS_HEARTBEAT` на 45 секунд,
+   - When alarm `codex-poll` срабатывает и отправляет `PING`, контент-скрипт отвечает `TASKS_UPDATE` + `TASKS_HEARTBEAT`,
+   - Then background обновляет `tabs[tabId].heartbeat.status` на `OK`, сбрасывает `missedCount`, а вкладка не учитывается как «живая» в `lastSeenAt`, пока не придёт свежий heartbeat.
 
 ## Типы тестов
 - **Unit**
   - Детекторы: корректное определение активности по тестовым DOM-фрагментам.
   - Агрегатор: переходы состояний `lastTotal`, антидребезг и применение формулы `max(D2_count, D3_count, D1_indicatorCount)` (включая сценарий «только D3»).
   - Settings: валидация объекта настроек, применение дефолтов и пересчёт `debounceMs`.
+  - Heartbeat: обработка `TASKS_HEARTBEAT`, обновление `lastSeenAt`, логика `missedCount` и статуса `STALE` → `OK`.
 - **Contract**
-  - Валидация OpenAPI: `POST /background/tasks-update`, `GET /background/state`, `GET /popup/state`.
+  - Валидация OpenAPI: `POST /background/tasks-update`, `POST /background/tasks-heartbeat`, `GET /background/state`, `GET /popup/state`.
   - JSON Schema: сериализация `AggregatedState`, `PopupRenderState` и `CodexTasksUserSettings`.
 - **Integration**
   - Симуляция Chrome APIs (tabs, alarms, notifications, storage.sync) через фейки. Проверка сценариев UC-1..UC-4 и изменения настроек.
+  - Отработка UC-5: имитация пропуска heartbeat, срабатывание alarm, повторное сканирование и сброс статуса `STALE`.
 
 ## Тестовые данные
 - DOM-фрагменты для детекторов D1/D2/D3 на RU/EN интерфейсах.

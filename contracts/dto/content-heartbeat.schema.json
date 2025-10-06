@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codex.tasks/contracts/dto/content-heartbeat.schema.json",
+  "title": "ContentScriptHeartbeat",
+  "description": "Heartbeat контент-скрипта, подтверждающий, что вкладка Codex остаётся активной",
+  "type": "object",
+  "required": [
+    "type",
+    "origin",
+    "ts",
+    "lastUpdateTs",
+    "intervalMs"
+  ],
+  "properties": {
+    "type": {
+      "const": "TASKS_HEARTBEAT",
+      "description": "Тип сообщения для роутинга в background service worker"
+    },
+    "origin": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL вкладки Codex, откуда отправлен heartbeat"
+    },
+    "ts": {
+      "type": "number",
+      "description": "Unix timestamp (мс) момента отправки heartbeat"
+    },
+    "lastUpdateTs": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Метка времени последнего успешного `TASKS_UPDATE`, известного контент-скрипту"
+    },
+    "intervalMs": {
+      "type": "integer",
+      "minimum": 1000,
+      "maximum": 60000,
+      "description": "Интервал (мс) до следующего запланированного heartbeat"
+    },
+    "respondingToPing": {
+      "type": "boolean",
+      "description": "Флаг true, если heartbeat отправлен в ответ на сообщение `PING`"
+    }
+  },
+  "additionalProperties": false
+}

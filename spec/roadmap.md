@@ -69,7 +69,7 @@
   - [ ] Сохранять последнюю метку сканирования для дедупликации событий и покрыть граничные случаи unit-тестами.
 - [ ] **Связь с background и устойчивость**
   - [ ] Обрабатывать входящие сообщения (`PING`, `RESET`, `REQUEST_STATE`) с повторным подключением после `runtime.lastError`.
-  - [ ] Поддерживать fail-safe таймер сканирования DOM (heartbeat) и экспортировать формат heartbeat в `shared/contracts`.
+  - [ ] Поддерживать fail-safe таймер сканирования DOM (heartbeat): каждые ≤15 секунд формировать `TASKS_HEARTBEAT` по схеме `contracts/dto/content-heartbeat.schema.json` и экспортировать типы через `shared/contracts`.
   - [ ] Логировать ключевые события (инициализация, heartbeat, ошибки отправки) и учитывать verbose-флаг из `chrome.storage.session`.
 
 ## Фаза 3. Background service worker ⏳ (v0.1.0)
@@ -78,9 +78,9 @@
   - [ ] Создать точку входа `src/background/index.ts` с регистрацией listeners (`runtime`, `tabs`, `alarms`, `storage`).
   - [ ] Организовать маршрутизацию сообщений через единый диспетчер (`handleMessage`) и покрыть happy path + ошибки `runtime.lastError` unit-тестами.
 - [ ] **Агрегатор состояния и хранение**
-  - [ ] Реализовать `aggregator.ts` для обработки `TASKS_UPDATE`, поддержки нескольких вкладок и обновления `chrome.storage.session` по схеме `contracts/state/aggregated-state.schema.json` (см. `AggregatedTabsState`).
+  - [ ] Реализовать `aggregator.ts` для обработки `TASKS_UPDATE` и `TASKS_HEARTBEAT`, поддержки нескольких вкладок и обновления `chrome.storage.session` по схеме `contracts/state/aggregated-state.schema.json` (см. `AggregatedTabsState`).
   - [ ] Добавить retry-механику записи состояния (до 3 попыток с интервалом ~1 c) и логировать неудачи.
-  - [ ] Синхронизировать heartbeat и `lastSeen` вкладок, сбрасывать state при закрытии и покрыть рестарт service worker тестами.
+  - [ ] Синхронизировать heartbeat и `lastSeenAt` вкладок, переводить `heartbeat.status` в `STALE` при пропусках и покрыть рестарт service worker тестами.
 - [ ] **Уведомления, i18n и логирование**
   - [ ] Реализовать `notifications.ts` с антидребезгом и локализованными строками (RU/EN) через общий i18n-слой.
   - [ ] Инкапсулировать одиночное уведомление при переходе `totalActiveCount` > 0 → 0 и очистку при новых задачах.
@@ -110,9 +110,9 @@
   - [ ] Запланировать тест, подтверждающий переключение RU/EN уведомлений согласно требованию «Уведомления формулируются на языке интерфейса браузера» из `spec/nfr.md`.
 - [ ] **Contract tests**
   - [ ] Реализовать проверку DTO/state JSON Schema (`ajv`/`schemathesis`) в CI-скрипте.
-  - [ ] Валидировать OpenAPI (`contracts/openapi.yaml`) против background/popup-хендлеров и задокументировать команды запуска.
+  - [ ] Валидировать OpenAPI (`contracts/openapi.yaml`) против background/popup-хендлеров (включая `/background/tasks-heartbeat`) и задокументировать команды запуска.
 - [ ] **Локальный HTTP-адаптер для тестов**
-  - [ ] Реализовать `msw` (или аналогичный) адаптер, эмулирующий `/background/tasks-update`, `/background/state`, `/popup/state`.
+  - [ ] Реализовать `msw` (или аналогичный) адаптер, эмулирующий `/background/tasks-update`, `/background/tasks-heartbeat`, `/background/state`, `/popup/state`.
   - [ ] Подключить контрактные проверки по `contracts/openapi.yaml`, DTO/State/Settings согласно требованиям `spec/test-plan.md`.
 - [ ] **Integration tests**
   - [ ] Смоделировать ключевые use-cases (UC-1..UC-3) с фейковым DOM, обменом сообщениями и будильниками.
