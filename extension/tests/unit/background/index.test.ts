@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
+  AggregatedTabsState,
   ContentScriptHeartbeat,
   ContentScriptTasksUpdate,
 } from '../../../src/shared/contracts';
@@ -25,15 +26,17 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function createAggregatorMock(): BackgroundAggregator {
+function createAggregatorMock(snapshot?: AggregatedTabsState): BackgroundAggregator {
   return {
     ready: Promise.resolve(),
     onStateChange: vi.fn(() => () => undefined),
-    getSnapshot: vi.fn(async () => ({
-      tabs: {},
-      lastTotal: 0,
-      debounce: { ms: 12_000, since: 0 },
-    })),
+    getSnapshot: vi.fn(async () =>
+      snapshot ?? {
+        tabs: {},
+        lastTotal: 0,
+        debounce: { ms: 12_000, since: 0 },
+      },
+    ),
     getTrackedTabIds: vi.fn(async () => []),
     handleTasksUpdate: vi.fn(async () => undefined),
     handleHeartbeat: vi.fn(async () => undefined),
@@ -95,6 +98,56 @@ describe('background message handler', () => {
     await handleRuntimeMessage(aggregator, logger, badMessage, sender);
     expect(aggregator.handleTasksUpdate).not.toHaveBeenCalled();
     expect(logger.warn).toHaveBeenCalled();
+  });
+
+  it('returns popup render state for POPUP_GET_STATE messages', async () => {
+    const snapshot: AggregatedTabsState = {
+      tabs: {
+        '5': {
+          origin: 'https://codex.openai.com',
+          title: 'Codex Tasks',
+          count: 2,
+          active: true,
+          updatedAt: 1_000,
+          lastSeenAt: 1_000,
+          heartbeat: {
+            lastReceivedAt: 1_000,
+            expectedIntervalMs: 15_000,
+            status: 'OK',
+            missedCount: 0,
+          },
+          signals: [
+            {
+              detector: 'D1_SPINNER',
+              evidence: 'Spinner visible',
+            },
+          ],
+        },
+      },
+      lastTotal: 2,
+      debounce: { ms: 12_000, since: 0 },
+    };
+    const aggregator = createAggregatorMock(snapshot);
+    const logger = createLoggerMock();
+
+    const response = await handleRuntimeMessage(
+      aggregator,
+      logger,
+      { type: 'POPUP_GET_STATE' },
+      { tab: undefined } as chrome.runtime.MessageSender,
+    );
+
+    expect(aggregator.getSnapshot).toHaveBeenCalled();
+    expect(response).toMatchObject({
+      totalActive: 2,
+      tabs: [
+        {
+          tabId: 5,
+          count: 2,
+          title: 'Codex Tasks',
+        },
+      ],
+    });
   });
 
   it('reacts to verbose flag changes stored in session storage', async () => {

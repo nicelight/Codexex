@@ -6,6 +6,7 @@ import {
   type ChromeLike,
   type ChromeLogger,
 } from '../shared/chrome';
+import { resolveLocale } from '../shared/locale';
 import type { BackgroundAggregator } from './aggregator';
 
 const NOTIFICATION_ID = 'codex-tasks-zero';
@@ -179,11 +180,6 @@ export function initializeNotifications(
     }
     activeNotificationId = undefined;
   }
-}
-
-function resolveLocale(chrome: ChromeLike): 'en' | 'ru' {
-  const uiLocale = chrome.i18n?.getUILanguage?.() ?? globalThis.navigator?.language ?? 'en';
-  return uiLocale.toLowerCase().startsWith('ru') ? 'ru' : 'en';
 }
 
 function allCountsZero(state: AggregatedTabsState): boolean {
