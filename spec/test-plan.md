@@ -32,11 +32,15 @@
    - Given вкладка с `count>0` закрывается (без финального сообщения),
    - When background получает событие `tabs.onRemoved`,
    - Then состояние вкладки удаляется, `lastTotal` пересчитывается, уведомление не создаётся, если есть другие активные задачи.
-6. **AC6 — Синхронизация пользовательских настроек (v0.2.0+)**
+6. **AC6 — Автоотключение выгрузки вкладки (MVP v0.1.0)**
+   - Given вкладка Codex отправляет `TASKS_UPDATE` с актуальными данными,
+   - When background обновляет агрегированное состояние без участия UI,
+   - Then в течение нескольких секунд вызывается `chrome.tabs.update({ autoDiscardable: false })` для этой вкладки, что фиксирует `autoDiscardableOff = true`.
+7. **AC7 — Синхронизация пользовательских настроек (v0.2.0+)**
    - Given в `chrome.storage.sync.settings` записаны значения по схеме `CodexTasksUserSettings`,
    - When пользователь изменяет `debounceMs`, `autoDiscardableOff`, `sound` или `showBadgeCount` через UI,
    - Then background валидирует объект, обновляет `AggregatedState.debounce.ms`, применяет `autoDiscardable` к вкладкам и синхронно обновляет бейдж и звуковой режим.
-7. **AC7 — Обнаружение и восстановление heartbeat**
+8. **AC8 — Обнаружение и восстановление heartbeat**
    - Given вкладка перестала отправлять `TASKS_HEARTBEAT` на 45 секунд,
    - When alarm `codex-poll` срабатывает и отправляет `PING`, контент-скрипт отвечает `TASKS_UPDATE` + `TASKS_HEARTBEAT`,
    - Then background сразу после получения `TASKS_HEARTBEAT` обновляет `tabs[tabId].lastSeenAt` и `tabs[tabId].heartbeat.lastReceivedAt`, сбрасывает `missedCount`, переводит статус в `OK` и возвращает вкладку в агрегированное состояние «жива».
