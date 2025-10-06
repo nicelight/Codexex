@@ -7,7 +7,7 @@
 | CAP-01 | Детектирование активности задач на вкладке Codex. | MutationObserver, периодический опрос при простое. | Контент-скрипт. | `TaskActivitySnapshot` (см. схемы DTO). |
 | CAP-02 | Агрегация состояния всех вкладок и расчёт `totalActiveCount`. | Получение `TASKS_UPDATE`, восстановление через alarm `codex-poll`. | Background service worker. | `AggregatedState.tabs`, `AggregatedState.lastTotal`. |
 | CAP-03 | Антидребезг и выдача уведомления при переходе `totalActiveCount` >0 → 0. | Изменение суммы активных задач, таймер debounce. | Background service worker, Chrome Notifications. | `AggregatedState.debounce`. |
-| CAP-04 | Применение `autoDiscardableOff` для вкладок Codex. | Старт расширения, получение обновления состояния, изменения настроек (v0.2.0+). | Background service worker, Chrome Tabs API. | Нет дополнительного состояния, действует напрямую. |
+| CAP-04 | Применение `autoDiscardableOff` для вкладок Codex. | Старт расширения, появление/активация вкладки Codex (`tabs.onCreated/onUpdated/onActivated`), получение `TASKS_UPDATE`, изменения настроек (v0.2.0+). | Background service worker, Chrome Tabs API. | Нет дополнительного состояния, действует напрямую. |
 | CAP-05 | Отображение агрегированного состояния в popup. | Пользователь открывает popup. | Popup UI, background. | Кэш состояния (чтение из `chrome.storage.session.state`). |
 | CAP-06 | Периодический пинг вкладок для восстановления состояния после сна сервис-воркера. | Срабатывание `chrome.alarms` (`codex-poll`). | Background service worker. | Запрос `PING` → вкладка отвечает актуальным `TASKS_UPDATE`. |
 | CAP-07 | Поддержка heartbeat для контроля живости вкладок. | Таймер контент-скрипта, реакция на `PING`, контроль пропусков по `AggregatedState`. | Контент-скрипт, background. | `ContentScriptHeartbeat`, `AggregatedState.tabs[].heartbeat`. |
@@ -47,7 +47,8 @@
 
 | Событие | Изменяемое состояние | Логика |
 |---------|----------------------|--------|
-| `TASKS_UPDATE` из контент-скрипта | `AggregatedState.tabs`, `AggregatedState.lastTotal`, `AggregatedState.debounce.since` | Обновить вкладку, пересчитать сумму, при переходе в 0 запустить антидребезг. |
+| `TASKS_UPDATE` из контент-скрипта | `AggregatedState.tabs`, `AggregatedState.lastTotal`, `AggregatedState.debounce.since` | Обновить вкладку, пересчитать сумму, при переходе в 0 запустить антидребезг, переустановить `autoDiscardable=false` для вкладки. |
+| `tabs.onCreated/onUpdated/onActivated` для вкладки Codex | Нет (операция над вкладкой) | В течение нескольких секунд после события повторно применить `autoDiscardable=false`, чтобы предотвратить выгрузку новой/активированной вкладки. |
 | `TASKS_HEARTBEAT` из контент-скрипта | `AggregatedState.tabs[].lastSeenAt`, `AggregatedState.tabs[].heartbeat` | Обновить `lastReceivedAt`, сбросить `missedCount`, выставить `status=OK`. |
 | Таймер `debounce` истёк | `AggregatedState.debounce.since`, системное уведомление | Проверить, что `lastTotal==0` и все `count==0`; создать уведомление, сбросить `since`. |
 | Закрытие вкладки (`tabs.onRemoved`) | `AggregatedState.tabs`, `AggregatedState.lastTotal` | Удалить вкладку, пересчитать сумму, при нуле сбросить `debounce.since`. |
