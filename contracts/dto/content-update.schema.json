@@ -9,7 +9,8 @@
     "origin",
     "active",
     "count",
-    "signals"
+    "signals",
+    "ts"
   ],
   "properties": {
     "type": {
