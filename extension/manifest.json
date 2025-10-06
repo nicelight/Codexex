@@ -6,17 +6,17 @@
   "permissions": ["notifications", "alarms", "storage", "tabs", "scripting"],
   "host_permissions": ["https://*.openai.com/*"],
   "background": {
-    "service_worker": "src/background/index.ts",
+    "service_worker": "src/background.js",
     "type": "module"
   },
   "action": {
-    "default_popup": "src/popup/index.html",
+    "default_popup": "src/popup.html",
     "default_title": "Codex Tasks Watcher"
   },
   "content_scripts": [
     {
       "matches": ["https://*.openai.com/*"],
-      "js": ["src/content/index.ts"],
+      "js": ["src/content.js"],
       "run_at": "document_idle"
     }
   ],
