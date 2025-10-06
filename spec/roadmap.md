@@ -72,25 +72,29 @@
   - [x] Поддерживать fail-safe таймер сканирования DOM (heartbeat): каждые ≤15 секунд формировать `TASKS_HEARTBEAT` по схеме `contracts/dto/content-heartbeat.schema.json` и экспортировать типы через `shared/contracts`.
   - [x] Логировать ключевые события (инициализация, heartbeat, ошибки отправки) и учитывать verbose-флаг из `chrome.storage.session`.
 
-## Фаза 3. Background service worker ⏳ (v0.1.0)
+## Фаза 3. Background service worker ✅ (v0.1.0)
 
-- [ ] **Каркас service worker**
-  - [ ] Создать точку входа `src/background/index.ts` с регистрацией listeners (`runtime`, `tabs`, `alarms`, `storage`).
-  - [ ] Организовать маршрутизацию сообщений через единый диспетчер (`handleMessage`) и покрыть happy path + ошибки `runtime.lastError` unit-тестами.
-- [ ] **Агрегатор состояния и хранение**
-  - [ ] Реализовать `aggregator.ts` для обработки `TASKS_UPDATE` и `TASKS_HEARTBEAT`, поддержки нескольких вкладок и обновления `chrome.storage.session` по схеме `contracts/state/aggregated-state.schema.json` (см. `AggregatedTabsState`).
-  - [ ] Добавить retry-механику записи состояния (до 3 попыток с интервалом ~1 c) и логировать неудачи.
-  - [ ] Синхронизировать heartbeat и `lastSeenAt` вкладок, переводить `heartbeat.status` в `STALE` при пропусках и покрыть рестарт service worker тестами.
-- [ ] **Уведомления, i18n и логирование**
-  - [ ] Реализовать `notifications.ts` с антидребезгом и локализованными строками (RU/EN) через общий i18n-слой.
-  - [ ] Инкапсулировать одиночное уведомление при переходе `totalActiveCount` > 0 → 0 и очистку при новых задачах.
-  - [ ] Управлять verbose-логированием: читать флаг из `chrome.storage.session`, переключать уровень и покрыть адаптер тестами.
-- [ ] **Алгоритмы будильников и устойчивость**
-  - [ ] Реализовать `alarms.ts` с расписанием `chrome.alarms`, поддержкой повторных `PING` и восстановлением после sleep.
-  - [ ] Применять `autoDiscardableOff` для вкладок Codex, документировать side-effects и проверять сценарии alarm → message → state.
-- [ ] **Наблюдаемость и телеметрия**
-  - [ ] Логировать ключевые события: `TASKS_UPDATE`, запуск/завершение уведомлений, ошибки чтения/записи `storage.session`, пропуски heartbeat, применение `autoDiscardableOff`.
-  - [ ] Покрыть logging-адаптер тестами на чтение/обновление флага, фильтрацию verbose-событий и fallback при `chrome.runtime.lastError`.
+- [x] **Каркас service worker**
+  - [x] Создать точку входа `src/background/index.ts` с регистрацией listeners (`runtime`, `tabs`, `alarms`, `storage`).
+  - [x] Организовать маршрутизацию сообщений через единый диспетчер (`handleMessage`) и покрыть happy path + ошибки `runtime.lastError` unit-тестами.
+- [x] **Агрегатор состояния и хранение**
+  - [x] Реализовать `aggregator.ts` для обработки `TASKS_UPDATE` и `TASKS_HEARTBEAT`, поддержки нескольких вкладок и обновления `chrome.storage.session` по схеме `contracts/state/aggregated-state.schema.json`
+    (см. `AggregatedTabsState`).
+  - [x] Добавить retry-механику записи состояния (до 3 попыток с интервалом ~1 c) и логировать неудачи.
+  - [x] Синхронизировать heartbeat и `lastSeenAt` вкладок, переводить `heartbeat.status` в `STALE` при пропусках и покрыть рестарт service worker тестами.
+- [x] **Уведомления, i18n и логирование**
+  - [x] Реализовать `notifications.ts` с антидребезгом и локализованными строками (RU/EN) через общий i18n-слой.
+  - [x] Инкапсулировать одиночное уведомление при переходе `totalActiveCount` > 0 → 0 и очистку при новых задачах.
+  - [x] Управлять verbose-логированием: читать флаг из `chrome.storage.session`, переключать уровень и покрыть адаптер тестами.
+- [x] **Алгоритмы будильников и устойчивость**
+  - [x] Реализовать `alarms.ts` с расписанием `chrome.alarms`, поддержкой повторных `PING` и восстановлением после sleep.
+  - [x] Применять `autoDiscardableOff` для вкладок Codex, документировать side-effects и проверять сценарии
+    alarm → message → state.
+- [x] **Наблюдаемость и телеметрия**
+  - [x] Логировать ключевые события: `TASKS_UPDATE`, запуск/завершение уведомлений, ошибки чтения/записи `storage.session`,
+    пропуски heartbeat, применение `autoDiscardableOff`.
+  - [x] Покрыть logging-адаптер тестами на чтение/обновление флага, фильтрацию verbose-событий и fallback при
+    `chrome.runtime.lastError`.
 
 ## Фаза 4. Popup UI ⏳ (v0.1.0)
 
