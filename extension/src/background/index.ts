@@ -10,6 +10,7 @@ import {
   type ChromeLogger,
 } from '../shared/chrome';
 import { initializeAggregator, type BackgroundAggregator } from './aggregator';
+import { generatePopupRenderState } from './popup-state';
 import { registerAlarms } from './alarms';
 import { initializeNotifications } from './notifications';
 
@@ -24,14 +25,19 @@ registerAlarms(aggregator, { chrome, logger: rootLogger });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   handleRuntimeMessage(aggregator, createChildLogger(rootLogger, 'runtime'), message, sender)
-    .catch((error) => {
-      rootLogger.error('message handling failed', error);
-    })
-    .finally(() => {
+    .then((response) => {
       try {
-        sendResponse();
+        sendResponse(response);
       } catch (error) {
         rootLogger.warn('sendResponse failed', error);
+      }
+    })
+    .catch((error) => {
+      rootLogger.error('message handling failed', error);
+      try {
+        sendResponse(undefined);
+      } catch (sendError) {
+        rootLogger.warn('sendResponse failed', sendError);
       }
     });
   return true;
@@ -48,9 +54,9 @@ export async function handleRuntimeMessage(
   logger: ChromeLogger,
   message: unknown,
   sender: chrome.runtime.MessageSender,
-): Promise<void> {
+): Promise<unknown> {
   if (!message || typeof message !== 'object') {
-    return;
+    return undefined;
   }
   const { type } = message as { type?: unknown };
   if (type === 'TASKS_UPDATE') {
@@ -58,22 +64,28 @@ export async function handleRuntimeMessage(
       assertContentScriptTasksUpdate(message);
     } catch (error) {
       logger.warn('invalid TASKS_UPDATE payload', error);
-      return;
+      return undefined;
     }
     await aggregatorRef.handleTasksUpdate(message, sender);
-    return;
+    return undefined;
   }
   if (type === 'TASKS_HEARTBEAT') {
     try {
       assertContentScriptHeartbeat(message);
     } catch (error) {
       logger.warn('invalid TASKS_HEARTBEAT payload', error);
-      return;
+      return undefined;
     }
     await aggregatorRef.handleHeartbeat(message, sender);
-    return;
+    return undefined;
+  }
+  if (type === 'POPUP_GET_STATE') {
+    const state = await generatePopupRenderState(aggregatorRef);
+    logger.debug('popup state generated', { totalActive: state.totalActive });
+    return state;
   }
   logger.debug('unknown message type ignored', { type });
+  return undefined;
 }
 
 function createVerbosityAwareLogger(chromeRef: ChromeLike): { logger: ChromeLogger } {
