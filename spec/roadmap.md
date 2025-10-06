@@ -58,7 +58,7 @@
 
 - [ ] **Бутстрап и обмен сообщениями**
   - [ ] Создать точку входа `src/content/index.ts`, которая инициализирует детекторы, подписки и логирование (reuse shared logger).
-  - [ ] Зафиксировать контракт `ContentMessage` и подготовить helper-функции (`postToBackground`, `onBackgroundEvent`).
+  - [ ] Зафиксировать контракт `ContentScriptTasksUpdate` и подготовить helper-функции (`postToBackground`, `onBackgroundEvent`), работающие с сообщением `TASKS_UPDATE` из `contracts/dto/content-update.schema.json`.
 - [ ] **Модульная система детекторов**
   - [ ] Реализовать интерфейс `Detector` c методами `bootstrap`, `scan`, `teardown`, обеспечив смену локали без перезагрузки.
   - [ ] Внедрить детекторы D1 (spinner) и D2 (Stop button) с DOM-фикстурами и unit-тестами для RU/EN.
