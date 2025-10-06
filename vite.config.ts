@@ -1,6 +1,7 @@
 import { defineConfig, type PluginOption } from 'vite';
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
+import type { OutputAsset, OutputBundle } from 'rollup';
 
 const projectRoot = __dirname;
 const extensionRoot = path.resolve(projectRoot, 'extension');
@@ -16,6 +17,38 @@ const entryFileNameMap = new Map([
   [path.relative(extensionRoot, contentEntry), 'src/content.js'],
 ]);
 
+function findChunkFileName(bundle: OutputBundle, entryPath: string): string {
+  const normalizedEntry = path.normalize(entryPath);
+  for (const chunk of Object.values(bundle)) {
+    if (chunk.type !== 'chunk') {
+      continue;
+    }
+
+    const facadeModuleId = chunk.facadeModuleId;
+    if (!facadeModuleId) {
+      continue;
+    }
+
+    if (path.normalize(facadeModuleId) === normalizedEntry) {
+      return chunk.fileName;
+    }
+  }
+
+  throw new Error(`Cannot locate output chunk for entry: ${entryPath}`);
+}
+
+function findPopupHtmlFileName(bundle: OutputBundle): string {
+  const htmlAsset = Object.values(bundle).find(
+    (asset): asset is OutputAsset => asset.type === 'asset' && asset.fileName.endsWith('.html'),
+  );
+
+  if (!htmlAsset) {
+    throw new Error('Cannot locate popup HTML asset in the bundle output');
+  }
+
+  return htmlAsset.fileName;
+}
+
 function manifestCopyPlugin(): PluginOption {
   return {
     name: 'codex-manifest-copy',
@@ -23,12 +56,37 @@ function manifestCopyPlugin(): PluginOption {
     buildStart() {
       this.addWatchFile(manifestPath);
     },
-    async generateBundle() {
+    async generateBundle(_, bundle) {
       const manifestSource = await readFile(manifestPath, 'utf-8');
+      const manifest = JSON.parse(manifestSource);
+
+      const backgroundFileName = findChunkFileName(bundle, backgroundEntry);
+      const contentFileName = findChunkFileName(bundle, contentEntry);
+      const popupHtmlFileName = findPopupHtmlFileName(bundle);
+
+      if (manifest.background) {
+        manifest.background.service_worker = backgroundFileName;
+      }
+
+      if (manifest.action) {
+        manifest.action.default_popup = popupHtmlFileName;
+      }
+
+      if (Array.isArray(manifest.content_scripts)) {
+        manifest.content_scripts = manifest.content_scripts.map((script: { js?: string[] }) => {
+          if (Array.isArray(script.js) && script.js.length > 0) {
+            return { ...script, js: [contentFileName] };
+          }
+          return script;
+        });
+      }
+
+      const updatedManifest = `${JSON.stringify(manifest, null, 2)}\n`;
+
       this.emitFile({
         type: 'asset',
         fileName: 'manifest.json',
-        source: manifestSource,
+        source: updatedManifest,
       });
     },
   };
