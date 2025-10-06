@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite build --watch",
     "build": "vite build",
     "lint": "eslint \"extension/src/**/*.{ts,tsx}\" --max-warnings=0",
     "contracts:generate": "node scripts/generate-contracts.mjs",
@@ -21,7 +21,6 @@
     "@types/node": "^20.11.30",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0",
-    "@webext-core/mv3-vite": "^0.9.0",
     "eslint": "^8.56.0",
     "eslint-config-prettier": "^9.1.0",
     "json-schema-to-typescript": "^13.1.1",

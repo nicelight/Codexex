@@ -37,7 +37,7 @@
 ## Фаза 0. Подготовка инфраструктуры проекта ✅
 
 - [x] **Инициализация репозитория под сборку MV3**
-  - [x] Создать `package.json`, подключить `vite`, `typescript`, `vitest`, `@types/chrome`, `@webext-core/mv3-vite` (либо аналогичный плагин) согласно `spec/implementation-plan.md`.
+  - [x] Создать `package.json`, подключить `vite`, `typescript`, `vitest`, `@types/chrome`, настроить локальный плагин сборки Manifest V3 согласно `spec/implementation-plan.md`.
   - [x] Настроить `tsconfig.json` с alias для `src/*`, включить строгий режим типов.
   - [x] Добавить базовую структуру каталогов `/extension/src/...` и конфиги форматирования (Prettier/ESLint при необходимости).
 - [x] **Manifest & build pipeline**
