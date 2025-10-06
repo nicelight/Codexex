@@ -32,10 +32,10 @@
    - Given вкладка с `count>0` закрывается (без финального сообщения),
    - When background получает событие `tabs.onRemoved`,
    - Then состояние вкладки удаляется, `lastTotal` пересчитывается, уведомление не создаётся, если есть другие активные задачи.
-6. **AC6 — Автоматическое отключение автоотгрузки вкладки (MVP v0.1.0)**
-   - Given вкладка Codex отправляет `TASKS_UPDATE` и background активирует состояние вкладки,
-   - When воркер обновляет агрегированное состояние без участия popup,
-   - Then в течение нескольких секунд автоматически (без участия UI) вызывается `chrome.tabs.update(tabId, { autoDiscardable: false })` для этой вкладки.
+6. **AC6 — Автоотключение выгрузки вкладки (MVP v0.1.0)**
+   - Given вкладка Codex отправляет `TASKS_UPDATE` с актуальными данными,
+   - When background обновляет агрегированное состояние без участия UI,
+   - Then в течение нескольких секунд вызывается `chrome.tabs.update({ autoDiscardable: false })` для этой вкладки, что фиксирует `autoDiscardableOff = true`.
 7. **AC7 — Синхронизация пользовательских настроек (v0.2.0+)**
    - Given в `chrome.storage.sync.settings` записаны значения по схеме `CodexTasksUserSettings`,
    - When пользователь изменяет `debounceMs`, `autoDiscardableOff`, `sound` или `showBadgeCount` через UI,
