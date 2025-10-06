@@ -1,14 +1,13 @@
-/**
- * Entry point for the content script. The actual implementation will be added in later phases
- * according to the Spec-Driven Development roadmap. At this stage we only ensure the bundle
- * structure compiles successfully under Vite.
- */
+import { ContentScriptRuntime } from './runtime';
 
-export function bootstrapContentScript(): void {
-  if (import.meta.env.DEV) {
-    // eslint-disable-next-line no-console
-    console.debug('[codex-tasks-watcher] content script bootstrap placeholder');
+let runtime: ContentScriptRuntime | undefined;
+
+export async function bootstrapContentScript(): Promise<void> {
+  if (runtime) {
+    return;
   }
+  runtime = new ContentScriptRuntime({ window });
+  await runtime.start();
 }
 
-bootstrapContentScript();
+void bootstrapContentScript();
