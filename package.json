@@ -1,0 +1,27 @@
+{
+  "name": "codex-tasks-watcher",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint \"extension/src/**/*.{ts,tsx}\" --max-warnings=0",
+    "test:unit": "vitest run --dir extension/tests/unit",
+    "test:contract": "vitest run --dir extension/tests/contract",
+    "test:integration": "vitest run --dir extension/tests/integration"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.262",
+    "@types/node": "^20.11.30",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "@webext-core/mv3-vite": "^0.9.0",
+    "eslint": "^8.56.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.2.5",
+    "typescript": "^5.4.5",
+    "vite": "^5.1.6",
+    "vitest": "^1.4.0"
+  }
+}
