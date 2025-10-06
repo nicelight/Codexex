@@ -4,6 +4,7 @@
  * boundaries referenced by the specification.
  */
 
+  
 import { initializeAggregator } from './aggregator';
 import { initializeNotifications } from './notifications';
 import { registerAlarms } from './alarms';
@@ -19,4 +20,8 @@ function bootstrapBackground(): void {
   }
 }
 
-chrome.runtime.onInstalled.addListener(bootstrapBackground);
+chrome.runtime.onInstalled.addListener(() => {
+  bootstrapBackground();
+});  
+  
+
