@@ -1,12 +1,591 @@
-/**
- * Aggregator module placeholder. The real implementation will manage TASKS_UPDATE and
- * TASKS_HEARTBEAT payloads according to the JSON Schemas defined in `contracts/state/*`
- * and the flows described in `spec/system-capabilities.md`.
- */
+import {
+  assertAggregatedTabsState,
+  type AggregatedDebounceState,
+  type AggregatedHeartbeatState,
+  type AggregatedTabState,
+  type AggregatedTabsState,
+  type ContentScriptHeartbeat,
+  type ContentScriptTasksUpdate,
+} from '../shared/contracts';
+import {
+  createChildLogger,
+  createLogger,
+  resolveChrome,
+  type ChromeLike,
+  type ChromeLogger,
+} from '../shared/chrome';
+import { getSessionStateKey } from '../shared/storage';
 
-export function initializeAggregator(): void {
-  if (import.meta.env.DEV) {
-    // eslint-disable-next-line no-console
-    console.debug('[codex-tasks-watcher] aggregator bootstrap placeholder');
+const DEFAULT_DEBOUNCE_MS = 12_000;
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 15_000;
+const HEARTBEAT_STALE_MULTIPLIER = 3;
+const STORAGE_KEY = getSessionStateKey();
+const MAX_WRITE_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 1_000;
+
+type StateMutator = (
+  next: AggregatedTabsState,
+  previous: AggregatedTabsState,
+) => boolean;
+
+type AggregatorListener = (event: AggregatorChangeEvent) => void;
+
+export type AggregatorEventReason =
+  | 'init'
+  | 'tasks-update'
+  | 'heartbeat'
+  | 'tab-removed'
+  | 'heartbeat-stale'
+  | 'debounce-cleared';
+
+export interface AggregatorChangeEvent {
+  readonly reason: AggregatorEventReason;
+  readonly previous: AggregatedTabsState;
+  readonly current: AggregatedTabsState;
+  readonly tabId?: number;
+  readonly staleTabIds?: number[];
+}
+
+export interface AggregatorOptions {
+  readonly chrome?: ChromeLike;
+  readonly logger?: ChromeLogger;
+  readonly now?: () => number;
+}
+
+export interface BackgroundAggregator {
+  readonly ready: Promise<void>;
+  onStateChange(listener: AggregatorListener): () => void;
+  getSnapshot(): Promise<AggregatedTabsState>;
+  getTrackedTabIds(): Promise<number[]>;
+  handleTasksUpdate(
+    message: ContentScriptTasksUpdate,
+    sender: chrome.runtime.MessageSender,
+  ): Promise<void>;
+  handleHeartbeat(
+    message: ContentScriptHeartbeat,
+    sender: chrome.runtime.MessageSender,
+  ): Promise<void>;
+  handleTabRemoved(tabId: number): Promise<void>;
+  evaluateHeartbeatStatuses(): Promise<number[]>;
+  clearDebounceIfIdle(): Promise<boolean>;
+}
+
+export function initializeAggregator(options: AggregatorOptions = {}): BackgroundAggregator {
+  return new BackgroundAggregatorImpl(options);
+}
+
+class BackgroundAggregatorImpl implements BackgroundAggregator {
+  public readonly ready: Promise<void>;
+
+  private state: AggregatedTabsState = cloneState(DEFAULT_STATE);
+  private readonly chrome: ChromeLike;
+  private readonly logger: ChromeLogger;
+  private readonly now: () => number;
+  private readonly listeners = new Set<AggregatorListener>();
+
+  constructor(options: AggregatorOptions) {
+    this.chrome = options.chrome ?? resolveChrome();
+    const baseLogger = options.logger ?? createLogger('codex-background');
+    this.logger = createChildLogger(baseLogger, 'aggregator');
+    this.now = options.now ?? (() => Date.now());
+    this.ready = this.loadInitialState();
   }
+
+  onStateChange(listener: AggregatorListener): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  async getSnapshot(): Promise<AggregatedTabsState> {
+    await this.ready;
+    return cloneState(this.state);
+  }
+
+  async getTrackedTabIds(): Promise<number[]> {
+    await this.ready;
+    return Object.keys(this.state.tabs).map((tabId) => Number(tabId));
+  }
+
+  async handleTasksUpdate(
+    message: ContentScriptTasksUpdate,
+    sender: chrome.runtime.MessageSender,
+  ): Promise<void> {
+    await this.ready;
+    const tabId = sender.tab?.id;
+    if (typeof tabId !== 'number') {
+      this.logger.warn('TASKS_UPDATE without tab id', { message });
+      return;
+    }
+    await this.updateState(
+      'tasks-update',
+      (next, previous) => {
+        const tabKey = String(tabId);
+        const tabTitle = this.resolveTitle(sender, message.origin);
+        const existing = next.tabs[tabKey] ??
+          this.createTabState(message.origin, tabTitle, message.ts);
+        let mutated = false;
+
+        if (existing.origin !== message.origin) {
+          existing.origin = message.origin;
+          mutated = true;
+        }
+        if (existing.title !== tabTitle) {
+          existing.title = tabTitle;
+          mutated = true;
+        }
+        if (existing.count !== message.count) {
+          existing.count = message.count;
+          mutated = true;
+        }
+        if (existing.active !== message.active) {
+          existing.active = message.active;
+          mutated = true;
+        }
+        if (existing.updatedAt !== message.ts) {
+          existing.updatedAt = message.ts;
+          mutated = true;
+        }
+        const heartbeat = existing.heartbeat;
+        const nextHeartbeatTs = Math.max(heartbeat.lastReceivedAt, message.ts);
+        if (heartbeat.lastReceivedAt !== nextHeartbeatTs) {
+          heartbeat.lastReceivedAt = nextHeartbeatTs;
+          mutated = true;
+        }
+        if (heartbeat.status !== 'OK') {
+          heartbeat.status = 'OK';
+          mutated = true;
+        }
+        if (heartbeat.missedCount !== 0) {
+          heartbeat.missedCount = 0;
+          mutated = true;
+        }
+        const lastSeenAt = Math.max(nextHeartbeatTs, existing.lastSeenAt, message.ts);
+        if (existing.lastSeenAt !== lastSeenAt) {
+          existing.lastSeenAt = lastSeenAt;
+          mutated = true;
+        }
+
+        const newSignals = message.signals.map((signal) => ({ ...signal }));
+        if (!areSignalsEqual(existing.signals, newSignals)) {
+          existing.signals = newSignals;
+          mutated = true;
+        }
+
+        next.tabs[tabKey] = existing;
+        const nextTotal = sumCounts(next.tabs);
+        if (next.lastTotal !== nextTotal) {
+          next.lastTotal = nextTotal;
+          mutated = true;
+        }
+        mutated = this.applyDebounceTransition(next, previous.lastTotal) || mutated;
+        return mutated;
+      },
+      { tabId },
+    );
+    this.logger.debug('TASKS_UPDATE processed', { tabId, count: message.count, active: message.active });
+  }
+
+  async handleHeartbeat(
+    message: ContentScriptHeartbeat,
+    sender: chrome.runtime.MessageSender,
+  ): Promise<void> {
+    await this.ready;
+    const tabId = sender.tab?.id;
+    if (typeof tabId !== 'number') {
+      this.logger.warn('TASKS_HEARTBEAT without tab id', { message });
+      return;
+    }
+    await this.updateState(
+      'heartbeat',
+      (next) => {
+        const tabKey = String(tabId);
+        const tabTitle = this.resolveTitle(sender, message.origin);
+        const heartbeatTs = Math.max(0, message.ts);
+        const updateTs = Math.max(heartbeatTs, message.lastUpdateTs);
+        const existing = next.tabs[tabKey] ??
+          this.createTabState(message.origin, tabTitle, updateTs);
+        let mutated = false;
+
+        if (existing.origin !== message.origin) {
+          existing.origin = message.origin;
+          mutated = true;
+        }
+        if (existing.title !== tabTitle) {
+          existing.title = tabTitle;
+          mutated = true;
+        }
+        if (existing.updatedAt < updateTs) {
+          existing.updatedAt = updateTs;
+          mutated = true;
+        }
+        const heartbeat = existing.heartbeat;
+        const expectedInterval = clampInterval(message.intervalMs);
+        if (heartbeat.expectedIntervalMs !== expectedInterval) {
+          heartbeat.expectedIntervalMs = expectedInterval;
+          mutated = true;
+        }
+        if (heartbeat.lastReceivedAt !== heartbeatTs) {
+          heartbeat.lastReceivedAt = heartbeatTs;
+          mutated = true;
+        }
+        if (heartbeat.status !== 'OK') {
+          heartbeat.status = 'OK';
+          mutated = true;
+        }
+        if (heartbeat.missedCount !== 0) {
+          heartbeat.missedCount = 0;
+          mutated = true;
+        }
+        const lastSeenAt = Math.max(existing.lastSeenAt, heartbeatTs, existing.updatedAt);
+        if (existing.lastSeenAt !== lastSeenAt) {
+          existing.lastSeenAt = lastSeenAt;
+          mutated = true;
+        }
+        next.tabs[tabKey] = existing;
+        return mutated;
+      },
+      { tabId },
+    );
+    this.logger.debug('TASKS_HEARTBEAT processed', { tabId, intervalMs: message.intervalMs });
+  }
+
+  async handleTabRemoved(tabId: number): Promise<void> {
+    await this.ready;
+    await this.updateState(
+      'tab-removed',
+      (next) => {
+        const tabKey = String(tabId);
+        if (!(tabKey in next.tabs)) {
+          return false;
+        }
+        delete next.tabs[tabKey];
+        const nextTotal = sumCounts(next.tabs);
+        let mutated = false;
+        if (next.lastTotal !== nextTotal) {
+          next.lastTotal = nextTotal;
+          mutated = true;
+        }
+        if (nextTotal === 0 && next.debounce.since !== 0) {
+          next.debounce.since = 0;
+          mutated = true;
+        }
+        return true;
+      },
+      { tabId },
+    );
+    this.logger.info('tab removed', { tabId });
+  }
+
+  async evaluateHeartbeatStatuses(): Promise<number[]> {
+    await this.ready;
+    const staleTabIds: number[] = [];
+    await this.updateState(
+      'heartbeat-stale',
+      (next) => {
+        let mutated = false;
+        const now = this.now();
+        for (const [tabKey, tab] of Object.entries(next.tabs)) {
+          const { heartbeat } = tab;
+          const threshold = heartbeat.expectedIntervalMs * HEARTBEAT_STALE_MULTIPLIER;
+          if (now - heartbeat.lastReceivedAt >= threshold) {
+            staleTabIds.push(Number(tabKey));
+            heartbeat.status = 'STALE';
+            heartbeat.missedCount += 1;
+            mutated = true;
+          }
+        }
+        return mutated;
+      },
+      { staleTabIds: [...staleTabIds] },
+    );
+    if (staleTabIds.length > 0) {
+      this.logger.warn('heartbeat stale detected', { tabIds: staleTabIds });
+    }
+    return staleTabIds;
+  }
+
+  async clearDebounceIfIdle(): Promise<boolean> {
+    await this.ready;
+    let cleared = false;
+    await this.updateState(
+      'debounce-cleared',
+      (next) => {
+        if (next.debounce.since === 0) {
+          return false;
+        }
+        if (next.lastTotal === 0 && areAllCountsZero(next.tabs)) {
+          next.debounce.since = 0;
+          cleared = true;
+          return true;
+        }
+        return false;
+      },
+    );
+    if (cleared) {
+      this.logger.info('debounce window cleared');
+    }
+    return cleared;
+  }
+
+  private async loadInitialState(): Promise<void> {
+    try {
+      const result = await this.chrome.storage.session.get({ [STORAGE_KEY]: DEFAULT_STATE });
+      const stored = result[STORAGE_KEY];
+      if (stored) {
+        try {
+          assertAggregatedTabsState(stored);
+          this.state = cloneState(normalizeState(stored));
+          this.logger.info('restored aggregated state', {
+            tabs: Object.keys(this.state.tabs).length,
+            lastTotal: this.state.lastTotal,
+          });
+          this.notifyListeners({
+            reason: 'init',
+            previous: cloneState(DEFAULT_STATE),
+            current: cloneState(this.state),
+          });
+          return;
+        } catch (error) {
+          this.logger.warn('stored state invalid, resetting', error);
+        }
+      }
+    } catch (error) {
+      this.logger.error('failed to read storage', error);
+    }
+    this.state = cloneState(DEFAULT_STATE);
+    await this.persistState(this.state);
+    this.notifyListeners({
+      reason: 'init',
+      previous: cloneState(DEFAULT_STATE),
+      current: cloneState(this.state),
+    });
+  }
+
+  private async updateState(
+    reason: AggregatorEventReason,
+    mutator: StateMutator,
+    meta: Partial<AggregatorChangeEvent> = {},
+  ): Promise<void> {
+    const previous = cloneState(this.state);
+    const next = cloneState(this.state);
+    const mutated = mutator(next, previous);
+    if (!mutated) {
+      return;
+    }
+    ensureDebounceDefaults(next.debounce);
+    assertAggregatedTabsState(next);
+    await this.persistState(next);
+    this.state = next;
+    this.notifyListeners({
+      reason,
+      previous,
+      current: cloneState(this.state),
+      ...meta,
+    });
+  }
+
+  private async persistState(state: AggregatedTabsState): Promise<void> {
+    const payload = { [STORAGE_KEY]: state } as Record<string, unknown>;
+    let attempt = 0;
+    while (attempt < MAX_WRITE_ATTEMPTS) {
+      try {
+        await this.chrome.storage.session.set(payload);
+        return;
+      } catch (error) {
+        attempt += 1;
+        this.logger.warn('failed to write state', { attempt, error });
+        if (attempt >= MAX_WRITE_ATTEMPTS) {
+          throw error;
+        }
+        await delay(RETRY_DELAY_MS);
+      }
+    }
+  }
+
+  private notifyListeners(event: AggregatorChangeEvent): void {
+    for (const listener of Array.from(this.listeners)) {
+      try {
+        listener({
+          ...event,
+          previous: cloneState(event.previous),
+          current: cloneState(event.current),
+          staleTabIds: event.staleTabIds ? [...event.staleTabIds] : undefined,
+        });
+      } catch (error) {
+        this.logger.error('listener threw', error);
+      }
+    }
+  }
+
+  private applyDebounceTransition(
+    state: AggregatedTabsState,
+    previousTotal: number,
+  ): boolean {
+    const now = this.now();
+    if (state.lastTotal === 0) {
+      if (previousTotal > 0 && state.debounce.since === 0) {
+        state.debounce.since = now;
+        return true;
+      }
+    } else if (state.debounce.since !== 0) {
+      state.debounce.since = 0;
+      return true;
+    }
+    return false;
+  }
+
+  private resolveTitle(
+    sender: chrome.runtime.MessageSender,
+    fallback: string,
+  ): string {
+    const raw = sender.tab?.title ?? '';
+    const trimmed = raw.trim();
+    return trimmed.length > 0 ? trimmed : fallback;
+  }
+
+  private createTabState(
+    origin: string,
+    title: string,
+    timestamp: number,
+  ): AggregatedTabState {
+    const safeTimestamp = Math.max(0, timestamp);
+    return {
+      origin,
+      title,
+      count: 0,
+      active: false,
+      updatedAt: safeTimestamp,
+      lastSeenAt: safeTimestamp,
+      heartbeat: {
+        lastReceivedAt: safeTimestamp,
+        expectedIntervalMs: DEFAULT_HEARTBEAT_INTERVAL_MS,
+        status: 'OK',
+        missedCount: 0,
+      },
+    };
+  }
+}
+
+const DEFAULT_STATE: AggregatedTabsState = {
+  tabs: {},
+  lastTotal: 0,
+  debounce: {
+    ms: DEFAULT_DEBOUNCE_MS,
+    since: 0,
+  },
+};
+
+function ensureDebounceDefaults(debounce: AggregatedDebounceState): void {
+  if (typeof debounce.ms !== 'number' || Number.isNaN(debounce.ms)) {
+    debounce.ms = DEFAULT_DEBOUNCE_MS;
+  }
+  debounce.ms = Math.min(Math.max(debounce.ms, 0), 60_000);
+  if (typeof debounce.since !== 'number' || Number.isNaN(debounce.since) || debounce.since < 0) {
+    debounce.since = 0;
+  }
+}
+
+function normalizeState(state: AggregatedTabsState): AggregatedTabsState {
+  const normalized: AggregatedTabsState = {
+    tabs: {},
+    lastTotal: Math.max(0, state.lastTotal ?? 0),
+    debounce: {
+      ms: state.debounce?.ms ?? DEFAULT_DEBOUNCE_MS,
+      since: state.debounce?.since ?? 0,
+    },
+  };
+  for (const [tabId, tab] of Object.entries(state.tabs ?? {})) {
+    normalized.tabs[tabId] = normalizeTabState(tab);
+  }
+  ensureDebounceDefaults(normalized.debounce);
+  return normalized;
+}
+
+function normalizeTabState(tab: AggregatedTabState): AggregatedTabState {
+  return {
+    origin: tab.origin,
+    title: tab.title,
+    count: Math.max(0, tab.count ?? 0),
+    active: Boolean(tab.active),
+    updatedAt: tab.updatedAt,
+    lastSeenAt: tab.lastSeenAt,
+    heartbeat: normalizeHeartbeat(tab.heartbeat),
+    ...(tab.signals ? { signals: tab.signals.map((signal) => ({ ...signal })) } : {}),
+  };
+}
+
+function normalizeHeartbeat(heartbeat: AggregatedHeartbeatState): AggregatedHeartbeatState {
+  return {
+    lastReceivedAt: heartbeat.lastReceivedAt,
+    expectedIntervalMs: clampInterval(heartbeat.expectedIntervalMs),
+    status: heartbeat.status === 'STALE' ? 'STALE' : 'OK',
+    missedCount: Math.max(0, heartbeat.missedCount ?? 0),
+  };
+}
+
+function cloneState(state: AggregatedTabsState): AggregatedTabsState {
+  const tabs: Record<string, AggregatedTabState> = {};
+  for (const [tabId, tab] of Object.entries(state.tabs)) {
+    tabs[tabId] = {
+      origin: tab.origin,
+      title: tab.title,
+      count: tab.count,
+      active: tab.active,
+      updatedAt: tab.updatedAt,
+      lastSeenAt: tab.lastSeenAt,
+      heartbeat: { ...tab.heartbeat },
+      ...(tab.signals ? { signals: tab.signals.map((signal) => ({ ...signal })) } : {}),
+    };
+  }
+  return {
+    tabs,
+    lastTotal: state.lastTotal,
+    debounce: { ...state.debounce },
+  };
+}
+
+function sumCounts(tabs: Record<string, AggregatedTabState>): number {
+  return Object.values(tabs).reduce((total, tab) => total + tab.count, 0);
+}
+
+function areAllCountsZero(tabs: Record<string, AggregatedTabState>): boolean {
+  return Object.values(tabs).every((tab) => tab.count === 0);
+}
+
+function areSignalsEqual(
+  previous: AggregatedTabState['signals'] | undefined,
+  next: AggregatedTabState['signals'] | undefined,
+): boolean {
+  if (!previous && !next) {
+    return true;
+  }
+  if (!previous || !next) {
+    return false;
+  }
+  if (previous.length !== next.length) {
+    return false;
+  }
+  return previous.every((signal, index) => {
+    const candidate = next[index];
+    return (
+      signal.detector === candidate.detector &&
+      signal.evidence === candidate.evidence &&
+      signal.taskKey === candidate.taskKey
+    );
+  });
+}
+
+function clampInterval(interval: number): number {
+  if (!Number.isFinite(interval)) {
+    return DEFAULT_HEARTBEAT_INTERVAL_MS;
+  }
+  return Math.min(Math.max(Math.trunc(interval), 1_000), 60_000);
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
