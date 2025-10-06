@@ -17,6 +17,8 @@ const entryFileNameMap = new Map([
   [path.relative(extensionRoot, contentEntry), 'src/content.js'],
 ]);
 
+const POPUP_HTML_OUTPUT = 'src/popup.html';
+
 function findChunkFileName(bundle: OutputBundle, entryPath: string): string {
   const normalizedEntry = path.normalize(entryPath);
   for (const chunk of Object.values(bundle)) {
@@ -37,22 +39,25 @@ function findChunkFileName(bundle: OutputBundle, entryPath: string): string {
   throw new Error(`Cannot locate output chunk for entry: ${entryPath}`);
 }
 
-function findPopupHtmlFileName(bundle: OutputBundle): string {
-  const htmlAsset = Object.values(bundle).find(
+function findPopupHtmlFileName(bundle: OutputBundle): string | null {
+  const htmlAssets = Object.values(bundle).filter(
     (asset): asset is OutputAsset => asset.type === 'asset' && asset.fileName.endsWith('.html'),
   );
 
-  if (!htmlAsset) {
-    throw new Error('Cannot locate popup HTML asset in the bundle output');
+  if (htmlAssets.length === 0) {
+    return null;
   }
 
-  return htmlAsset.fileName;
+  const popupAsset = htmlAssets.find((asset) => asset.fileName === POPUP_HTML_OUTPUT);
+
+  return (popupAsset ?? htmlAssets[0]).fileName;
 }
 
 function manifestCopyPlugin(): PluginOption {
   return {
     name: 'codex-manifest-copy',
     apply: 'build',
+    enforce: 'post',
     buildStart() {
       this.addWatchFile(manifestPath);
     },
@@ -64,12 +69,18 @@ function manifestCopyPlugin(): PluginOption {
       const contentFileName = findChunkFileName(bundle, contentEntry);
       const popupHtmlFileName = findPopupHtmlFileName(bundle);
 
+      if (!popupHtmlFileName) {
+        this.warn(
+          `Popup HTML asset not found in bundle; defaulting to \"${POPUP_HTML_OUTPUT}\" in manifest`,
+        );
+      }
+
       if (manifest.background) {
         manifest.background.service_worker = backgroundFileName;
       }
 
       if (manifest.action) {
-        manifest.action.default_popup = popupHtmlFileName;
+        manifest.action.default_popup = popupHtmlFileName ?? POPUP_HTML_OUTPUT;
       }
 
       if (Array.isArray(manifest.content_scripts)) {
@@ -123,8 +134,11 @@ export default defineConfig({
         },
         chunkFileNames: 'assets/[name]-[hash].js',
         assetFileNames: (assetInfo) => {
-          if (assetInfo.type === 'asset' && assetInfo.name === 'index.html') {
-            return 'src/popup.html';
+          if (assetInfo.type === 'asset') {
+            const assetName = assetInfo.name ? path.basename(assetInfo.name) : '';
+            if (assetName === 'index.html' || assetName === 'popup.html') {
+              return POPUP_HTML_OUTPUT;
+            }
           }
           return 'assets/[name]-[hash][extname]';
         },
