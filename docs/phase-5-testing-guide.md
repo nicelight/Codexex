@@ -107,5 +107,6 @@ Mock-сервер реализован в `extension/tests/support/http-adapter.
 - [Описание use-case](../spec/use-cases.md)
 - [Контрактные тесты и HTTP-адаптер](../extension/tests/contract/contracts.test.ts)
 - [Интеграционные сценарии](../extension/tests/integration/use-cases.test.ts)
+- [Запуск расширения в браузере](./phase-5-browser-manual.md)
 
 Если у тебя появятся вопросы по конкретным командам или результатам тестов — пиши, и мы обновим документ.
