@@ -39,14 +39,14 @@
 7. **AC7 — Обнаружение и восстановление heartbeat**
    - Given вкладка перестала отправлять `TASKS_HEARTBEAT` на 45 секунд,
    - When alarm `codex-poll` срабатывает и отправляет `PING`, контент-скрипт отвечает `TASKS_UPDATE` + `TASKS_HEARTBEAT`,
-   - Then background обновляет `tabs[tabId].heartbeat.lastSeenAt`, ставит статус `OK`, сбрасывает `missedCount` и сразу возвращает вкладку в агрегированное состояние «жива».
+   - Then background сразу после получения `TASKS_HEARTBEAT` обновляет `tabs[tabId].heartbeat.lastSeenAt`, сбрасывает `missedCount`, переводит статус в `OK` и возвращает вкладку в агрегированное состояние «жива».
 
 ## Типы тестов
 - **Unit**
   - Детекторы: корректное определение активности по тестовым DOM-фрагментам.
   - Агрегатор: переходы состояний `lastTotal`, антидребезг и применение формулы `max(D2_count, D3_count, D1_indicatorCount)` (включая сценарий «только D3»).
   - Settings: валидация объекта настроек, применение дефолтов и пересчёт `debounceMs`.
-  - Heartbeat: обработка `TASKS_HEARTBEAT`, обновление `lastSeenAt`, логика `missedCount` и статуса `STALE` → `OK`.
+  - Heartbeat: обработка `TASKS_HEARTBEAT` с немедленным обновлением `lastSeenAt`, сбросом `missedCount` и переходом статуса `STALE` → `OK`.
 - **Contract**
   - Валидация OpenAPI: `POST /background/tasks-update`, `POST /background/tasks-heartbeat`, `GET /background/state`, `GET /popup/state`.
   - JSON Schema: сериализация `AggregatedState`, `PopupRenderState` и `CodexTasksUserSettings`.
