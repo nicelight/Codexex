@@ -34,16 +34,16 @@
 
 > Отправная точка — полный пакет спецификаций (см. таблицу выше). Ниже перечислены шаги для реализации расширения Chrome с учётом зависимостей и ожидаемых артефактов.
 
-## Фаза 0. Подготовка инфраструктуры проекта ⏳
+## Фаза 0. Подготовка инфраструктуры проекта ✅
 
-- [ ] **Инициализация репозитория под сборку MV3**
-  - [ ] Создать `package.json`, подключить `vite`, `typescript`, `vitest`, `@types/chrome`, `@webext-core/mv3-vite` (либо аналогичный плагин) согласно `spec/implementation-plan.md`.
-  - [ ] Настроить `tsconfig.json` с alias для `src/*`, включить строгий режим типов.
-  - [ ] Добавить базовую структуру каталогов `/extension/src/...` и конфиги форматирования (Prettier/ESLint при необходимости).
-- [ ] **Manifest & build pipeline**
-  - [ ] Создать `manifest.json` (MV3) с минимальными разрешениями (`notifications`, `alarms`, `storage`, `tabs`, `scripting`, `host_permissions`).
-  - [ ] Настроить `vite.config.ts` для сборки background service worker, content-script и popup.
-  - [ ] Добавить npm-скрипты: `build`, `dev`, `lint` (если применимо), `test:unit`, `test:contract`, `test:integration`.
+- [x] **Инициализация репозитория под сборку MV3**
+  - [x] Создать `package.json`, подключить `vite`, `typescript`, `vitest`, `@types/chrome`, `@webext-core/mv3-vite` (либо аналогичный плагин) согласно `spec/implementation-plan.md`.
+  - [x] Настроить `tsconfig.json` с alias для `src/*`, включить строгий режим типов.
+  - [x] Добавить базовую структуру каталогов `/extension/src/...` и конфиги форматирования (Prettier/ESLint при необходимости).
+- [x] **Manifest & build pipeline**
+  - [x] Создать `manifest.json` (MV3) с минимальными разрешениями (`notifications`, `alarms`, `storage`, `tabs`, `scripting`, `host_permissions`).
+  - [x] Настроить `vite.config.ts` для сборки background service worker, content-script и popup.
+  - [x] Добавить npm-скрипты: `build`, `dev`, `lint` (если применимо), `test:unit`, `test:contract`, `test:integration`.
 
 ## Фаза 1. Общие модули и контракты ⏳
 
