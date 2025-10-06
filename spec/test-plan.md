@@ -39,7 +39,7 @@
 7. **AC7 — Обнаружение и восстановление heartbeat**
    - Given вкладка перестала отправлять `TASKS_HEARTBEAT` на 45 секунд,
    - When alarm `codex-poll` срабатывает и отправляет `PING`, контент-скрипт отвечает `TASKS_UPDATE` + `TASKS_HEARTBEAT`,
-   - Then background обновляет `tabs[tabId].heartbeat.status` на `OK`, сбрасывает `missedCount`, а вкладка не учитывается как «живая» в `lastSeenAt`, пока не придёт свежий heartbeat.
+   - Then background обновляет `tabs[tabId].heartbeat.lastSeenAt`, ставит статус `OK`, сбрасывает `missedCount` и сразу возвращает вкладку в агрегированное состояние «жива».
 
 ## Типы тестов
 - **Unit**
