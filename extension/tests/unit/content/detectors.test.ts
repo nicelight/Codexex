@@ -72,6 +72,50 @@ describe('content detectors', () => {
     expect(signal?.taskKey).toBe('abc123');
   });
 
+  it('detects cancel buttons in Russian interface', () => {
+    document.documentElement.lang = 'ru';
+    document.body.innerHTML = `
+      <div class="task" data-task-id="cancel-ru">
+        <button class="btn">Отменить задачу</button>
+      </div>
+    `;
+
+    const pipeline = createDetectorPipeline({
+      document,
+      logger: noopLogger,
+      enableCardHeuristic: false,
+    });
+    const scanner = new ActivityScanner(pipeline, noopLogger);
+    const snapshot = scanner.scan(Date.now());
+
+    expect(snapshot.active).toBe(true);
+    expect(snapshot.count).toBe(1);
+    const signal = snapshot.signals.find((item) => item.detector === 'D2_STOP_BUTTON');
+    expect(signal?.taskKey).toBe('cancel-ru');
+  });
+
+  it('detects cancel buttons by aria-label in English interface', () => {
+    document.documentElement.lang = 'en';
+    document.body.innerHTML = `
+      <div class="task" data-task-id="cancel-en">
+        <button class="btn" aria-label="Cancel task"></button>
+      </div>
+    `;
+
+    const pipeline = createDetectorPipeline({
+      document,
+      logger: noopLogger,
+      enableCardHeuristic: false,
+    });
+    const scanner = new ActivityScanner(pipeline, noopLogger);
+    const snapshot = scanner.scan(Date.now());
+
+    expect(snapshot.active).toBe(true);
+    expect(snapshot.count).toBe(1);
+    const signal = snapshot.signals.find((item) => item.detector === 'D2_STOP_BUTTON');
+    expect(signal?.taskKey).toBe('cancel-en');
+  });
+
   it('detects icon-only stop controls by data-testid hints', () => {
     document.documentElement.lang = 'en';
     document.body.innerHTML = `
