@@ -20,10 +20,10 @@
    - Given вкладка отправляет `TASKS_UPDATE` с `count=0`,
    - When в течение окна антидребезга приходит новое сообщение с `count>0`,
    - Then уведомление не создаётся и окно начинается заново.
-3. **AC3 — Popup отображает актуальные данные**
+3. **AC3 — Popup отображает актуальные данные без дублей**
    - Given в `AggregatedState` содержатся вкладки с `count>0`,
    - When popup запрашивает `/popup/state`,
-   - Then в ответе перечислены вкладки с корректными `count`, `title` и, при наличии, `signals`.
+   - Then в ответе перечислены вкладки с корректными `count`, `title` и, при наличии, `signals`, сгруппированными по `taskKey` без повторяющихся элементов.
 4. **AC4 — Контент-скрипт соблюдает Schema**
    - Given контент-скрипт отправляет `TASKS_UPDATE`,
    - When сообщение валидируется по `contracts/dto/content-update.schema.json`,
@@ -55,7 +55,7 @@
   - Валидация OpenAPI: `POST /background/tasks-update`, `POST /background/tasks-heartbeat`, `GET /background/state`, `GET /popup/state`.
   - JSON Schema: сериализация `AggregatedState`, `PopupRenderState` и `CodexTasksUserSettings`.
 - **Integration**
-  - Симуляция Chrome APIs (tabs, alarms, notifications, storage.sync) через фейки. Проверка сценариев UC-1..UC-4 и изменения настроек.
+  - Симуляция Chrome APIs (tabs, alarms, notifications, storage.sync) через фейки. Проверка сценариев UC-1..UC-4 и изменения настроек, включая дедупликацию `signals` по `taskKey` в popup.
   - Отработка UC-5: имитация пропуска heartbeat, срабатывание alarm, повторное сканирование и сброс статуса `STALE`.
 
 ## Тестовые данные
