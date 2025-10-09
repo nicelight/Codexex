@@ -4,7 +4,10 @@
   "description": "Observes Codex tabs and prepares notifications when tasks complete.",
   "version": "0.1.0",
   "permissions": ["notifications", "alarms", "storage", "tabs", "scripting"],
-  "host_permissions": ["https://*.openai.com/*"],
+  "host_permissions": [
+    "https://*.openai.com/*",
+    "https://*.chatgpt.com/*"
+  ],
   "background": {
     "service_worker": "src/background.js",
     "type": "module"
@@ -15,7 +18,10 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://*.openai.com/*"],
+      "matches": [
+        "https://*.openai.com/*",
+        "https://*.chatgpt.com/*"
+      ],
       "js": ["src/content.js"],
       "run_at": "document_idle"
     }

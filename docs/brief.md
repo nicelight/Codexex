@@ -52,7 +52,7 @@
 
 ## 4. Обзор решения (высокоуровнево)
 
-* **content‑script** (на страницах `https://*.openai.com/*`):
+* **content‑script** (на страницах `https://*.openai.com/*` и `https://*.chatgpt.com/*`):
 
   * Ставит `MutationObserver` на `document.documentElement`.
   * Периодически/при мутациях вычисляет `activeTasks` (булев флаг + список источников), используя **детекторы**:
@@ -248,7 +248,7 @@ Background хранит `signals` в виде последнего снимка 
 
 ## 8. Разрешения и политика безопасности
 
-* `host_permissions`: `https://*.openai.com/*` (уточнить производный домен Codex при интеграции).
+* `host_permissions`: `https://*.openai.com/*`, `https://*.chatgpt.com/*` (уточнить производные домены Codex при интеграции).
 * `permissions`: `storage`, `notifications`, `alarms`, `scripting`, `tabs` (нужно background для пингов вкладок и работы с `autoDiscardable`).
 * CSP: не вставляем инлайновые скрипты в страницу; работаем в изолированном мире контент‑скрипта.
 
@@ -370,11 +370,11 @@ Background хранит `signals` в виде последнего снимка 
   "name": "Codex Tasks Watcher",
   "version": "0.1.0",
   "permissions": ["storage", "notifications", "alarms", "scripting", "tabs"],
-  "host_permissions": ["https://*.openai.com/*"],
+  "host_permissions": ["https://*.openai.com/*", "https://*.chatgpt.com/*"],
   "background": { "service_worker": "src/bg.js" },
   "content_scripts": [
     {
-      "matches": ["https://*.openai.com/*"],
+      "matches": ["https://*.openai.com/*", "https://*.chatgpt.com/*"],
       "js": ["src/content.js"],
       "run_at": "document_idle"
     }
@@ -597,7 +597,7 @@ function applyAutoDiscardable(tabId) {
 }
 
 function applyAutoDiscardableToAllCodexTabs() {
-  chrome.tabs.query({ url: '*://*.openai.com/*' }, (tabs) => {
+  chrome.tabs.query({ url: ['*://*.openai.com/*', '*://*.chatgpt.com/*'] }, (tabs) => {
     tabs.forEach((tab) => applyAutoDiscardable(tab.id));
   });
 }
@@ -719,7 +719,7 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
 chrome.alarms.create('codex-poll', { periodInMinutes: 1 });
 chrome.alarms.onAlarm.addListener(alarm => {
   if (alarm.name !== 'codex-poll') return;
-  chrome.tabs.query({ url: '*://*.openai.com/*' }, tabs => {
+  chrome.tabs.query({ url: ['*://*.openai.com/*', '*://*.chatgpt.com/*'] }, tabs => {
     tabs.forEach(t => chrome.tabs.sendMessage(t.id, { type: 'PING' }));
   });
 });

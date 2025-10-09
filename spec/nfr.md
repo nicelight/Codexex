@@ -14,7 +14,7 @@
 ## Security & Privacy
 - Runtime-валидаторы JSON Schema не должны полагаться на `eval`/`new Function`; используем заранее скомпилированные ajv-функции, совместимые с CSP Manifest V3.
 - Расширение не делает внешних сетевых запросов и не сохраняет данные вне `chrome.storage.session`.
-- Минимальный набор прав: `storage`, `notifications`, `alarms`, `scripting`, `tabs`, `host_permissions` (`https://*.openai.com/*`).
+- Минимальный набор прав: `storage`, `notifications`, `alarms`, `scripting`, `tabs`, `host_permissions` (`https://*.openai.com/*`, `https://*.chatgpt.com/*`).
 - Контент-скрипт не изменяет DOM Codex, только читает состояние и отправляет сообщения.
 
 ## Usability & UX

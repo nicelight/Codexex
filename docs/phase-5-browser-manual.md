@@ -45,13 +45,13 @@
 |---------------|-------------|-----------------|
 | **Service Worker** (background) | `chrome://extensions/` → **Details** → **Inspect views: service worker** | Консоль должна показывать логи с префиксом `codex-background`. При загрузке появятся сообщения `bootstrap content script`, `TASKS_UPDATE processed`, переключения verbose-режима. Ошибок `Uncaught` быть не должно. |
 | **Popup UI** | Клик по иконке расширения → затем «Подробнее» → **Inspect views: popup** | Во вкладке Elements/Console проверь, что DOM отрисован, нет ошибок `Failed to load popup state`. Таблица задач должна соответствовать состоянию из background. |
-| **Content script** | Открой вкладку `https://chat.openai.com` (или любую `*.openai.com`) → `Ctrl+Shift+I` → Console | Логи с префиксом `codex-content`. При первом запуске должен появиться `bootstrap content script`. Ошибки о недоступных API означают проблемы с разрешениями. |
+| **Content script** | Открой вкладку `https://chatgpt.com` (или любую `*.openai.com` / `*.chatgpt.com`) → `Ctrl+Shift+I` → Console | Логи с префиксом `codex-content`. При первом запуске должен появиться `bootstrap content script`. Ошибки о недоступных API означают проблемы с разрешениями. |
 | **Storage** | В консоли service worker выполни `chrome.storage.session.get(null).then(console.log)` | Убедись, что ключ `codex.tasks.state` появляется после первых событий. |
 
 ## 5. Ручной сценарий проверки
 
 1. **Запусти сборку** и загрузку расширения (разделы 2–3).
-2. **Открой новую вкладку** на `https://chat.openai.com/`.
+2. **Открой новую вкладку** на `https://chatgpt.com/` (или актуальный домен Codex).
 3. В консоли вкладки убедись, что нет ошибок при инициализации content-script.
 4. Сымитируй появление задач (можно запустить unit/contract тесты или дождаться реальных событий). Проверяй:
    - В консоли service worker появляются `TASKS_UPDATE processed` с корректным `tabId` и `count`.
@@ -68,7 +68,7 @@
 
 - [ ] В `chrome://extensions/` нет предупреждений по разрешениям и ошибок загрузки.
 - [ ] Service worker активен (в карточке расширения статус `Service worker (Running)` или `Stopped` с возможностью вручную запустить). Если он падает — копируй стек.
-- [ ] Content script реально подключается на страницах `*.openai.com` (лог `bootstrap content script`).
+- [ ] Content script реально подключается на страницах `*.openai.com` / `*.chatgpt.com` (лог `bootstrap content script`).
 - [ ] Popup открывается без красных ошибок в консоли, локализация подставляет текущее значение `state.locale`.
 - [ ] Состояние в popup соответствует логам `TASKS_UPDATE` (число задач, таймстемпы обновлений, статус heartbeat).
 - [ ] При включении verbose-режима появляются сообщения `verbose flag toggled`.
