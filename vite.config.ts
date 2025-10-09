@@ -18,6 +18,7 @@ const entryFileNameMap = new Map([
 ]);
 
 const POPUP_HTML_OUTPUT = 'src/popup.html';
+const CONTENT_ASSET_GLOB = 'assets/*';
 
 function findChunkFileName(bundle: OutputBundle, entryPath: string): string {
   const normalizedEntry = path.normalize(entryPath);
@@ -75,6 +76,37 @@ function manifestCopyPlugin(): PluginOption {
         );
       }
 
+      const contentLoaderFileName = 'src/content.js';
+      const ensureContentResources = () => {
+        const requiredResources = new Set([contentFileName, CONTENT_ASSET_GLOB]);
+
+        if (!Array.isArray(manifest.web_accessible_resources) || manifest.web_accessible_resources.length === 0) {
+          manifest.web_accessible_resources = [
+            {
+              resources: Array.from(requiredResources),
+              matches: [
+                'https://*.openai.com/*',
+                'https://*.chatgpt.com/*',
+              ],
+            },
+          ];
+          return;
+        }
+
+        const targetEntry =
+          manifest.web_accessible_resources.find(
+            (entry: { resources?: string[] }) =>
+              Array.isArray(entry.resources) && entry.resources.includes(contentFileName),
+          ) ?? manifest.web_accessible_resources[0];
+
+        const currentResources = new Set(targetEntry.resources ?? []);
+        for (const resource of requiredResources) {
+          currentResources.add(resource);
+        }
+
+        targetEntry.resources = Array.from(currentResources).sort();
+      };
+
       if (manifest.background) {
         manifest.background.service_worker = backgroundFileName;
       }
@@ -82,8 +114,6 @@ function manifestCopyPlugin(): PluginOption {
       if (manifest.action) {
         manifest.action.default_popup = popupHtmlFileName ?? POPUP_HTML_OUTPUT;
       }
-
-      const contentLoaderFileName = 'src/content.js';
 
       if (Array.isArray(manifest.content_scripts)) {
         manifest.content_scripts = manifest.content_scripts.map((script: { js?: string[] }) => {
@@ -107,6 +137,8 @@ function manifestCopyPlugin(): PluginOption {
         fileName: contentLoaderFileName,
         source: loaderSource,
       });
+
+      ensureContentResources();
 
       const updatedManifest = `${JSON.stringify(manifest, null, 2)}\n`;
 

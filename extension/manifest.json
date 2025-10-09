@@ -28,7 +28,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["src/content.main.js"],
+      "resources": ["src/content.main.js", "assets/*"],
       "matches": [
         "https://*.openai.com/*",
         "https://*.chatgpt.com/*"
