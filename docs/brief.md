@@ -201,6 +201,7 @@ Background хранит `signals` в виде последнего снимка 
 **D1 — Спиннер**
 
 * Положительные признаки: `[aria-busy="true"]`, `[role="progressbar"]`, элементы с классами вида `.animate-spin`, SVG с `animateTransform`, наличие `aria-label` типа `loading`.
+* Подтверждённая структура в списке задач (апрель 2024): `button[data-testid="codex-stop"] > span.flex.h-4.w-4.items-center.justify-center > svg.animate-spin`. SVG несёт класс `animate-spin`, что даёт стабильный якорь для детектора.
 * Для каждого видимого индикатора проверяем текстовое содержимое: если внутри есть цифры, извлекаем первую последовательность, приводим к числу (`parseInt`) и передаём как подсказку `countHint` для расчёта `count` (см. §18).
 * Негативные признаки: отображение спиннера внутри скрытых контейнеров (`display:none`, `aria-hidden=true`) — игнорировать.
 * Обязательные проверки видимости: элемент и его предки не помечены `aria-hidden="true"`; `offsetParent` существует (либо стиль `position:fixed`), `getComputedStyle` не возвращает `display:none`, `visibility:hidden|collapse`, `opacity:0`.
@@ -209,6 +210,8 @@ Background хранит `signals` в виде последнего снимка 
 **D2 — Кнопка Stop/Cancel/Остановить/Отменить**
 
 * Ищем кнопки в карточках задач на главной: `button[aria-label*="Stop" i]`, `button[aria-label*="Cancel" i]`, `button:has(svg[aria-label*="stop" i])`, `button:contains("Stop"|"Cancel"|"Остановить"|"Отменить")` (приблизительно; реализация через обход и проверку текста/ARIA).
+* Факт‑чек UI Codex (апрель 2024) показывает, что и в списке задач, и на странице детали используется `button[data-testid="codex-stop"]` со структурой `span[aria-hidden="true"]` (иконка) + `span` с локализованной надписью.
+
 * Каждый видимый экземпляр такой кнопки добавляется в коллекцию результатов детектора с вычисленным `taskKey` (ближайшая карточка задачи по `data-task-id`/`data-testid*="task"`), чтобы downstream‑логика могла объединить несколько сигналов об одной задаче.
 * Детектор должен реагировать на изменение текста кнопки без замены DOM-узла, поэтому `MutationObserver` обязан отслеживать изменения `characterData` (см. §18).
 

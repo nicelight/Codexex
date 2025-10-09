@@ -1,0 +1,96 @@
+Примеры фрагментов фронтенда страницы https://chatgpt.com/codex (с которой необходимо производить парсинг задач) при разных состояниях задач.
+
+* В контейнере `group task-row-container` лежат Codex таски. В каждом таком контейнере нужно искать таску и определять ее состояние.
+* В контейнере `text-token-text-tertiary flex gap-1` указано время последнего обновления таски
+* В контейнере `flex flex-col gap-0.5` указано название задачи
+* В контейнере `flex flex-1 items-center gap-2` указано состояние задачи (решена, решается, нуждается в участии юзера)
+    * Если в контейнере присутствует кнопка `border-token-border-heavy hover:bg-token-bg-secondary flex h-6 w-6 items-center justify-center rounded-full border`, значит задача решается, это главный маркер для определения состояния задачи.
+
+1.   контейнер с решенной таской и внесенными в код изменениями.
+
+```
+<<div class="group task-row-container">
+    <div class="hover:bg-token-bg-tertiary relative ring-inset focus-within:border-token-border-heavy focus-within:border-s-2 focus-within:ps-[-2px]">
+        <a class="outline-offset-[-1px] focus-within:rounded-lg" href="/codex/tasks/task_e_68e770c2d67c83329cb9784b8217dd38" data-discover="true">
+            <div class="border-token-border-light grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-5 border-b px-4 py-3.5 text-sm md:px-3">
+                <div class="flex flex-col gap-0.5">
+                    <div class="text-token-text-primary flex w-full min-w-0 items-center gap-1.5">
+                        <div class="flex-1 truncate font-medium">
+                            <span>Identify key development challenges</span>
+</div>
+</div>
+<div class="text-token-text-tertiary flex gap-1">
+    <span class="truncate empty:hidden">Только что</span
+            ><span class="text-token-text-tertiary">·</span
+            ><span class="truncate empty:hidden">nicelight/AIcurator</span>
+</div>
+</div>
+<div class="flex flex-1 items-center gap-2">
+    <div class="flex flex-row gap-1 font-medium min-w-10 justify-end">
+        <span class="text-green-500">+12</span><span class="text-red-500">-0</span>
+    </div>
+</div>
+</div>
+</a>
+</div>
+</div>
+```
+
+  2.Контейнер с решенной таской без изменений в коде ( нуждается в участии юзера)  
+
+```
+<div class="group task-row-container">
+    <div class="hover:bg-token-bg-tertiary relative ring-inset focus-within:border-token-border-heavy focus-within:border-s-2 focus-within:ps-[-2px]">
+        <a class="outline-offset-[-1px] focus-within:rounded-lg" href="/codex/tasks/task_e_68e770c2d67c83329cb9784b8217dd38" data-discover="true">
+            <div class="border-token-border-light grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-5 border-b px-4 py-3.5 text-sm md:px-3">
+                <div class="flex flex-col gap-0.5">
+                    <div class="text-token-text-primary flex w-full min-w-0 items-center gap-1.5">
+                        <div class="flex-1 truncate font-medium">
+                            <span>Identify key development challenges</span>
+                        </div>
+                    </div>
+                    <div class="text-token-text-tertiary flex gap-1">
+                        <span class="truncate empty:hidden">20 мин назад</span
+            ><span class="text-token-text-tertiary">·</span
+            ><span class="truncate empty:hidden">nicelight/AIcurator</span>
+                    </div>
+                </div>
+                <div class="flex flex-1 items-center gap-2"></div>
+            </div>
+    </div>
+</div>
+```
+
+
+3. Контейнер с таской, которая сейчас  Identify Key решается
+```
+<div class="group task-row-container">
+    <div class="hover:bg-token-bg-tertiary relative ring-inset focus-within:border-token-border-heavy focus-within:border-s-2 focus-within:ps-[-2px]">
+        <a class="outline-offset-[-1px] focus-within:rounded-lg" href="/codex/tasks/task_e_68e770c2d67c83329cb9784b8217dd38" data-discover="true">
+            <div class="border-token-border-light grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-5 border-b px-4 py-3.5 text-sm md:px-3">
+                <div class="flex flex-col gap-0.5">
+                    <div class="text-token-text-primary flex w-full min-w-0 items-center gap-1.5">
+                        <div class="flex-1 truncate font-medium">
+                            <span>Identify key development challenges</span>
+    </div>
+</div>
+<div class="text-token-text-tertiary flex gap-1">
+    <span class="truncate empty:hidden">Только что</span
+            ><span class="text-token-text-tertiary">·</span
+            ><span class="truncate empty:hidden">nicelight/AIcurator</span>
+</div>
+</div>
+<div class="flex flex-1 items-center gap-2">
+    <span class="loading-shimmer-pure-text">Writing code</span
+          ><button
+            type="button"
+            class="border-token-border-heavy hover:bg-token-bg-secondary flex h-6 w-6 items-center justify-center rounded-full border"
+            aria-label="Отменить задачу"
+            data-testid="stop-button"
+          >
+          </button>
+        </div></div
+    ></a>
+  </div>
+</div>
+```
