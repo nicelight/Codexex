@@ -3,13 +3,13 @@
 ## Цели тестирования
 - Подтвердить соответствие контент-скрипта и background спецификациям JSON Schema.
 - Проверить корректность антидребезга и уникальность уведомлений.
-- Убедиться, что popup отображает актуальное состояние задач.
-- Для релизов v0.2.0+: подтвердить управление пользовательскими настройками и их применение.
+- Убедиться, что popup отображает актуальное состояние задач и корректно сортирует вкладки.
+- Подтвердить устойчивость heartbeat/`PING` цикла и принудительное отключение `autoDiscardable`.
 
 ## Область покрытия
 - Юнит-тесты детекторов и агрегатора.
-- Контрактные тесты HTTP-адаптера (OpenAPI).
-- Интеграционные сценарии с имитацией вкладок и сообщений.
+- Контрактные проверки DTO/State (JSON Schema, Ajv).
+- Интеграционные сценарии с имитацией вкладок, alarm и уведомлений.
 
 ## Acceptance Criteria
 1. **AC1 — Уведомление по завершении всех задач**
@@ -20,10 +20,10 @@
    - Given вкладка отправляет `TASKS_UPDATE` с `count=0`,
    - When в течение окна антидребезга приходит новое сообщение с `count>0`,
    - Then уведомление не создаётся и окно начинается заново.
-3. **AC3 — Popup отображает актуальные данные без дублей**
-   - Given в `AggregatedState` содержатся вкладки с `count>0`,
-   - When popup запрашивает `/popup/state`,
-   - Then в ответе перечислены вкладки с корректными `count`, `title` и, при наличии, `signals`, сгруппированными по `taskKey` без повторяющихся элементов.
+3. **AC3 — Popup отображает актуальные данные и сортировку**
+   - Given в `AggregatedState` содержатся вкладки с `count>0` и различными `lastSeenAt`,
+   - When popup запрашивает `POPUP_GET_STATE`,
+   - Then в ответе перечислены вкладки в порядке убывания `count`, затем `lastSeenAt`, у каждой вкладки указаны `title`, `origin`, `heartbeatStatus`, `signals`, а `totalActive` равен сумме `count`.
 4. **AC4 — Контент-скрипт соблюдает Schema**
    - Given контент-скрипт отправляет `TASKS_UPDATE`,
    - When сообщение валидируется по `contracts/dto/content-update.schema.json`,
@@ -35,43 +35,38 @@
 6. **AC6 — Автоотключение выгрузки вкладки (MVP v0.1.0)**
    - Given вкладка Codex отправляет `TASKS_UPDATE` с актуальными данными,
    - When background обновляет агрегированное состояние без участия UI,
-   - Then в течение нескольких секунд вызывается `chrome.tabs.update({ autoDiscardable: false })` для этой вкладки, что фиксирует `autoDiscardableOff = true`.
-7. **AC7 — Синхронизация пользовательских настроек (v0.2.0+)**
-   - Given в `chrome.storage.sync.settings` записаны значения по схеме `CodexTasksUserSettings`,
-   - When пользователь изменяет `debounceMs`, `autoDiscardableOff`, `sound` или `showBadgeCount` через UI,
-   - Then background валидирует объект, обновляет `AggregatedState.debounce.ms`, применяет `autoDiscardable` к вкладкам и синхронно обновляет бейдж и звуковой режим.
-8. **AC8 — Обнаружение и восстановление heartbeat**
+   - Then в течение нескольких секунд вызывается `chrome.tabs.update({ autoDiscardable: false })` для этой вкладки и она добавляется в список защищённых; при удалении вкладки защита снимается.
+7. **AC7 — Обнаружение и восстановление heartbeat**
    - Given вкладка перестала отправлять `TASKS_HEARTBEAT` на 45 секунд,
    - When alarm `codex-poll` срабатывает и отправляет `PING`, контент-скрипт отвечает `TASKS_UPDATE` + `TASKS_HEARTBEAT`,
    - Then background сразу после получения `TASKS_HEARTBEAT` обновляет `tabs[tabId].lastSeenAt` и `tabs[tabId].heartbeat.lastReceivedAt`, сбрасывает `missedCount`, переводит статус в `OK` и возвращает вкладку в агрегированное состояние «жива».
 
 ## Типы тестов
 - **Unit**
-  - Детекторы: корректное определение активности по тестовым DOM-фрагментам.
-  - Агрегатор: переходы состояний `lastTotal`, антидребезг и применение формулы `max(D2_count, D3_count, D1_indicatorCount)` (включая сценарий «только D3»).
-  - Settings: валидация объекта настроек, применение дефолтов и пересчёт `debounceMs`.
-  - Heartbeat: обработка `TASKS_HEARTBEAT` с немедленным обновлением `lastSeenAt`, сбросом `missedCount` и переходом статуса `STALE` → `OK`.
+  - Детекторы: корректное определение активности по тестовым DOM-фрагментам, учёт локали.
+  - ActivityScanner: объединение сигналов, расчёт `count = max(detector.count)`, дебаунс нулевых состояний.
+  - Aggregator/notifications: переходы состояний `lastTotal`, `debounce`, восстановление из storage, работа retry, локализация уведомлений.
+  - Popup: генерация `PopupRenderState`, сортировка вкладок, отображение статуса `STALE`.
 - **Contract**
-  - Валидация OpenAPI: `POST /background/tasks-update`, `POST /background/tasks-heartbeat`, `GET /background/state`, `GET /popup/state`.
-  - JSON Schema: сериализация `AggregatedState`, `PopupRenderState` и `CodexTasksUserSettings`.
+  - JSON Schema: сериализация `ContentScriptTasksUpdate`, `ContentScriptHeartbeat`, `AggregatedTabsState`, `PopupRenderState`.
 - **Integration**
-  - Симуляция Chrome APIs (tabs, alarms, notifications, storage.sync) через фейки. Проверка сценариев UC-1..UC-4 и изменения настроек, включая дедупликацию `signals` по `taskKey` в popup.
-  - Отработка UC-5: имитация пропуска heartbeat, срабатывание alarm, повторное сканирование и сброс статуса `STALE`.
+  - Симуляция Chrome APIs (tabs, alarms, notifications, storage.session) через фейки. Проверка сценариев UC-1..UC-5, включая `PING`, очистку дебаунса и autoDiscardable.
+  - Проверка восстановления состояния после рестарта service worker (чтение `chrome.storage.session`).
 
 ## Тестовые данные
-- DOM-фрагменты для детекторов D1/D2/D3 на RU/EN интерфейсах.
-- Моки Chrome API: `tabs.query`, `notifications.create`, `storage.session`, `storage.sync`.
+- DOM-фрагменты для детекторов D1/D2 (RU/EN), мок-структуры для отключённого D3.
+- Моки Chrome API: `tabs.update`, `tabs.sendMessage`, `notifications.create`, `notifications.clear`, `alarms`, `storage.session`.
 - Набор последовательностей сообщений для воспроизведения сценариев (см. `spec/use-cases.md`).
 
 ## Метрики и отчётность
 - Покрытие unit-тестов по файлам детекторов ≥80%.
-- Контрактные тесты выполняются в CI при каждом PR.
-- Отчёт о прогоне включается в PR (лог pytest + результаты валидации OpenAPI).
+- Контрактные проверки JSON Schema выполняются в CI при каждом PR.
+- Отчёт о прогоне включается в PR (лог тестов + результаты AJV).
 
 ## Инструменты
-- Jest/Vitest (или аналог) для unit-тестов в среде jsdom.
+- Jest/Vitest (или аналог) для unit/integration тестов в среде jsdom и node.
 - `ajv` для проверки JSON Schema в тестах.
-- `schemathesis` или `dredd` для контрактного тестирования OpenAPI адаптера.
+- Пользовательские моки Chrome API или `webextension-polyfill` shim для интеграционных сценариев.
 
 ## Риски и mitigations
 - Изменение DOM на стороне Codex → предусмотреть возможность обновления фикстур DOM.
