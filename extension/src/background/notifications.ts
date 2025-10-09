@@ -25,7 +25,7 @@ const STRINGS: Record<'en' | 'ru', NotificationStrings> = {
   },
   ru: {
     title: 'Codex',
-    message: 'Все задачи в Codex завершены',
+    message: 'Все задачи Codex завершены',
     buttonOk: 'ОК',
   },
 };

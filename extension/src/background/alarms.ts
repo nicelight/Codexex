@@ -50,6 +50,13 @@ export function registerAlarms(
       logger.error('failed to apply autoDiscardable on startup', error);
     });
 
+  void aggregator
+    .getSnapshot()
+    .then((snapshot) => ensureAutoDiscardable(snapshot))
+    .catch((error) => {
+      logger.warn('failed to apply autoDiscardable on initial snapshot', error);
+    });
+
   const alarmListener: AlarmListener = (alarm) => {
     if (alarm.name !== ALARM_NAME) {
       return;

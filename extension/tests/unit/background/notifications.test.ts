@@ -129,4 +129,42 @@ describe('background notifications', () => {
 
     controller.dispose();
   });
+
+  it('uses localized strings from i18n when scheduling notifications', async () => {
+    chromeMock.i18n.getUILanguage = () => 'ru-RU';
+    const aggregator = initializeAggregator({ chrome: chromeMock, now: () => currentTime });
+    await aggregator.ready;
+
+    const sender = { tab: { id: 11, title: 'Codex' } } as chrome.runtime.MessageSender;
+    const makeUpdate = (count: number, ts: number): ContentScriptTasksUpdate => ({
+      type: 'TASKS_UPDATE',
+      origin: 'https://codex.openai.com',
+      active: count > 0,
+      count,
+      signals: [],
+      ts,
+    });
+
+    await aggregator.handleTasksUpdate(makeUpdate(2, 2_000), sender);
+    currentTime = 3_000;
+    await aggregator.handleTasksUpdate(makeUpdate(0, 3_000), sender);
+
+    const createSpy = vi.spyOn(chromeMock.notifications, 'create');
+    const controller = initializeNotifications(aggregator, {
+      chrome: chromeMock,
+      now: () => currentTime,
+    });
+
+    currentTime = 16_000;
+    await vi.advanceTimersByTimeAsync(12_000);
+
+    expect(createSpy).toHaveBeenCalledTimes(1);
+    const payload = createSpy.mock.calls[0]?.[1];
+    expect(payload).toMatchObject({
+      message: 'Все задачи Codex завершены',
+      buttons: [{ title: 'ОК' }],
+    });
+
+    controller.dispose();
+  });
 });

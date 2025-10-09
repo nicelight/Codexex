@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import {
   type ContentScriptHeartbeat,
   type ContentScriptTasksUpdate,
@@ -183,8 +183,93 @@ describe('BackgroundAggregator', () => {
 
     const restoredAggregator = initializeAggregator({ chrome: chromeMock });
     await restoredAggregator.ready;
-    const snapshot = await restoredAggregator.getSnapshot();
+   const snapshot = await restoredAggregator.getSnapshot();
     expect(snapshot.lastTotal).toBe(3);
     expect(snapshot.tabs['42']).toBeDefined();
+  });
+
+  it('resets to default when stored state is invalid', async () => {
+    const storageKey = getSessionStateKey();
+    const invalidState = {
+      tabs: {
+        bad: {
+          origin: 'https://codex.openai.com',
+          title: 'Broken',
+          count: -5,
+          active: true,
+          updatedAt: -1,
+          lastSeenAt: -2,
+          heartbeat: {
+            lastReceivedAt: -3,
+            expectedIntervalMs: 0,
+            status: 'STALE',
+            missedCount: -1,
+          },
+        },
+      },
+      lastTotal: -10,
+      debounce: { ms: -1, since: -5 },
+    };
+
+    chromeMock.storage.session.get = vi.fn(async () => ({
+      [storageKey]: invalidState,
+    }));
+    const setSpy = vi.spyOn(chromeMock.storage.session, 'set');
+
+    const aggregator = initializeAggregator({ chrome: chromeMock });
+    await aggregator.ready;
+
+    const snapshot = await aggregator.getSnapshot();
+    expect(snapshot.tabs).toEqual({});
+    expect(snapshot.lastTotal).toBe(0);
+    expect(snapshot.debounce.since).toBe(0);
+
+    expect(setSpy).toHaveBeenCalled();
+    const persisted = setSpy.mock.calls.at(-1)?.[0][storageKey];
+    expect(persisted).toMatchObject({
+      tabs: {},
+      lastTotal: 0,
+      debounce: { since: 0 },
+    });
+  });
+
+  it('recovers from storage read failures', async () => {
+    const storageKey = getSessionStateKey();
+    chromeMock.storage.session.get = vi.fn(async () => {
+      throw new Error('storage unavailable');
+    });
+    const setSpy = vi.spyOn(chromeMock.storage.session, 'set');
+
+    const aggregator = initializeAggregator({ chrome: chromeMock });
+    await aggregator.ready;
+
+    const snapshot = await aggregator.getSnapshot();
+    expect(snapshot.tabs).toEqual({});
+    expect(snapshot.lastTotal).toBe(0);
+
+    expect(setSpy).toHaveBeenCalled();
+    const persisted = setSpy.mock.calls.at(-1)?.[0][storageKey];
+    expect(persisted).toBeDefined();
+  });
+
+  it('ignores heartbeat messages without tab id', async () => {
+    const aggregator = initializeAggregator({ chrome: chromeMock });
+    await aggregator.ready;
+
+    const heartbeat: ContentScriptHeartbeat = {
+      type: 'TASKS_HEARTBEAT',
+      origin: 'https://codex.openai.com',
+      ts: 1_000,
+      lastUpdateTs: 800,
+      intervalMs: 15_000,
+    };
+
+    await expect(
+      aggregator.handleHeartbeat(heartbeat, { tab: undefined } as chrome.runtime.MessageSender),
+    ).resolves.toBeUndefined();
+
+    const snapshot = await aggregator.getSnapshot();
+    expect(snapshot.tabs).toEqual({});
+    expect(snapshot.lastTotal).toBe(0);
   });
 });

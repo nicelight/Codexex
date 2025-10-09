@@ -22,6 +22,7 @@ async function main() {
   const schemas = await loadSchemas(schemaPaths);
   const typeGenerator = new TypeGenerator(schemas);
   const ajvArtifacts = compileAjvArtifacts(schemas);
+  const schemaExports = generateSchemaExports(schemas);
 
   const imports = new Set(['import type { ErrorObject, ValidateFunction } from \'ajv\';']);
   if (ajvArtifacts.helpers.usesFormats) {
@@ -68,7 +69,28 @@ async function main() {
     '',
     typeGenerator.emitAll(),
     '',
-    generateSchemaExports(schemas),
+    schemaExports.block,
+    '',
+    `export const contractSchemas = [${schemaExports.names.join(', ')}] as const;`,
+    '',
+    'export function registerContractSchemas(registrar: { addSchema(schema: unknown): unknown }): void {',
+    '  for (const schema of contractSchemas) {',
+    '    const schemaId = (schema as { $id?: string }).$id;',
+    '    if (typeof schemaId === \'string\' && \'getSchema\' in registrar && typeof registrar.getSchema === \'function\') {',
+    '      if (registrar.getSchema(schemaId)) {',
+    '        continue;',
+    '      }',
+    '    }',
+    '    try {',
+    '      registrar.addSchema(schema);',
+    '    } catch (error) {',
+    '      const message = error instanceof Error ? error.message : String(error);',
+    '      if (!message.includes(\'already exists\')) {',
+    '        throw error;',
+    '      }',
+    '    }',
+    '  }',
+    '}',
     '',
     'export interface ContractDescriptor<T> {',
     '  readonly schema: unknown;',
@@ -140,12 +162,14 @@ async function loadSchemas(paths) {
 
 function generateSchemaExports(schemas) {
   const chunks = [];
+  const names = [];
   for (const { path: schemaPath, literal, json } of schemas.values()) {
     const typeName = ensureTypeName(json, schemaPath);
     const constName = toSchemaConstName(typeName);
+    names.push(constName);
     chunks.push(`export const ${constName} = ${literal} as const;`);
   }
-  return chunks.join('\n');
+  return { block: chunks.join('\n'), names };
 }
 
 function compileAjvArtifacts(schemas) {
@@ -235,31 +259,27 @@ function sanitizeStandaloneCode(moduleCode, helpersUsage) {
     helpersUsage.usesFormats = true;
     helpersUsage.usesUri = true;
     code = code.replace(
-      /const \w+ = require\("ajv-formats\/dist\/formats"\)\.fullFormats\.uri;/g,
-      'const format0 = formatUri;',
+      /const (\w+) = require\("ajv-formats\/dist\/formats"\)\.fullFormats\.uri;/g,
+      (_, varName) => `const ${varName} = formatUri;`,
     );
   }
   if (/fullFormats\["date-time"]/.test(code)) {
     helpersUsage.usesFormats = true;
     helpersUsage.usesDateTime = true;
     code = code.replace(
-      /const \w+ = require\("ajv-formats\/dist\/formats"\)\.fullFormats\["date-time"];/g,
-      'const format1 = formatDateTime;',
+      /const (\w+) = require\("ajv-formats\/dist\/formats"\)\.fullFormats\["date-time"];/g,
+      (_, varName) => `const ${varName} = formatDateTime;`,
     );
   }
   if (/require\("ajv\/dist\/runtime\/ucs2length"\)/.test(code)) {
     helpersUsage.usesUnicodeLength = true;
     code = code.replace(
-      /const \w+ = require\("ajv\/dist\/runtime\/ucs2length"\)\.default;/g,
-      'const unicodeFn = unicodeLength;',
+      /const (\w+) = require\("ajv\/dist\/runtime\/ucs2length"\)\.default;/g,
+      (_, varName) => `const ${varName} = unicodeLength;`,
     );
   }
 
   code = code.trim();
-  code = code.replace(/;/g, ';\n');
-  code = code.replace(/}([a-zA-Z])/g, '}\n$1');
-  code = code.replace(/}(\s*)else/g, '}\nelse');
-  code = code.replace(/\n{2,}/g, '\n');
 
   const body = code
     .split('\n')

@@ -100,6 +100,19 @@ export interface ChromeLike {
 }
 
 let chromeOverride: ChromeLike | undefined;
+let injectedChrome: ChromeLike | undefined;
+
+type ViLike = typeof import('vitest')['vi'];
+
+function getVi(): ViLike | undefined {
+  const candidate = (globalThis as { vi?: ViLike }).vi;
+  return candidate && typeof candidate.fn === 'function' ? candidate : undefined;
+}
+
+function withSpy<T extends (...args: any[]) => unknown>(impl: T): T {
+  const viLike = getVi();
+  return viLike ? (viLike.fn(impl) as unknown as T) : impl;
+}
 
 export function getChrome(): ChromeLike {
   if (typeof globalThis.chrome === 'undefined') {
@@ -114,6 +127,15 @@ export function resolveChrome(): ChromeLike {
 
 export function setChromeInstance(instance: ChromeLike | undefined): void {
   chromeOverride = instance;
+  if (instance) {
+    injectedChrome = instance;
+    (globalThis as Record<string, unknown>).chrome = instance as unknown as typeof chrome;
+    return;
+  }
+  if (injectedChrome && (globalThis as Record<string, unknown>).chrome === injectedChrome) {
+    delete (globalThis as Record<string, unknown>).chrome;
+    injectedChrome = undefined;
+  }
 }
 
 function createPortMock(): chrome.runtime.Port {
@@ -274,8 +296,8 @@ export function createMockChrome(overrides?: Partial<ChromeLike>): ChromeMock {
 
   const base: ChromeMock = {
     runtime: {
-      sendMessage: createCallbackInvoker() as typeof chrome.runtime.sendMessage,
-      connect: (() => createPortMock()) as typeof chrome.runtime.connect,
+      sendMessage: withSpy(createCallbackInvoker()) as typeof chrome.runtime.sendMessage,
+      connect: withSpy((() => createPortMock()) as typeof chrome.runtime.connect),
       onMessage: runtimeOnMessage.event,
       lastError: undefined,
     },
@@ -285,8 +307,8 @@ export function createMockChrome(overrides?: Partial<ChromeLike>): ChromeMock {
       onChanged: storageOnChanged.event,
     },
     tabs: {
-      query: (async () => []) as typeof chrome.tabs.query,
-      sendMessage: (async (...args: Parameters<typeof chrome.tabs.sendMessage>) => {
+      query: withSpy((async () => []) as typeof chrome.tabs.query),
+      sendMessage: withSpy((async (...args: Parameters<typeof chrome.tabs.sendMessage>) => {
         let callback: ((response?: unknown) => void) | undefined;
         for (let index = args.length - 1; index >= 0; index -= 1) {
           if (typeof args[index] === 'function') {
@@ -298,42 +320,45 @@ export function createMockChrome(overrides?: Partial<ChromeLike>): ChromeMock {
           callback();
         }
         return undefined as unknown;
-      }) as typeof chrome.tabs.sendMessage,
-      update: (async (tabId: number, updateProperties?: chrome.tabs.UpdateProperties) => ({
+      }) as typeof chrome.tabs.sendMessage),
+      update: withSpy((async (tabId: number, updateProperties?: chrome.tabs.UpdateProperties) => ({
         id: tabId,
         ...updateProperties,
-      })) as typeof chrome.tabs.update,
-      get: (async (tabId: number) => ({ id: tabId })) as typeof chrome.tabs.get,
+      })) as typeof chrome.tabs.update),
+      get: withSpy((async (tabId: number) => ({
+        id: tabId,
+        url: `https://example.com/${tabId}`,
+      })) as typeof chrome.tabs.get),
       onRemoved: tabsOnRemoved.event,
       onActivated: tabsOnActivated.event,
       onUpdated: tabsOnUpdated.event,
       onCreated: tabsOnCreated.event,
     },
     alarms: {
-      create: ((name: string, alarmInfo?: chrome.alarms.AlarmCreateInfo) => {
+      create: withSpy(((name: string, alarmInfo?: chrome.alarms.AlarmCreateInfo) => {
         alarmsState.set(name, alarmInfo);
-      }) as typeof chrome.alarms.create,
-      clear: (async (name: string) => {
+      }) as typeof chrome.alarms.create),
+      clear: withSpy((async (name: string) => {
         const existed = alarmsState.delete(name);
         return existed;
-      }) as typeof chrome.alarms.clear,
-      clearAll: (async () => {
+      }) as typeof chrome.alarms.clear),
+      clearAll: withSpy((async () => {
         const hadEntries = alarmsState.size > 0;
         alarmsState.clear();
         return hadEntries;
-      }) as typeof chrome.alarms.clearAll,
-      get: (async (name: string) => {
+      }) as typeof chrome.alarms.clearAll),
+      get: withSpy((async (name: string) => {
         if (!alarmsState.has(name)) {
           return undefined;
         }
         return { name } as chrome.alarms.Alarm;
-      }) as typeof chrome.alarms.get,
+      }) as typeof chrome.alarms.get),
       onAlarm: alarmsOnAlarm.event,
     },
     notifications: {
-      create: (async (id: string | undefined) => id ?? 'mock-notification') as typeof chrome.notifications.create,
-      clear: (async () => true) as typeof chrome.notifications.clear,
-      update: (async () => true) as typeof chrome.notifications.update,
+      create: withSpy((async (id: string | undefined) => id ?? 'mock-notification') as typeof chrome.notifications.create),
+      clear: withSpy((async () => true) as typeof chrome.notifications.clear),
+      update: withSpy((async () => true) as typeof chrome.notifications.update),
     },
     scripting: {
       executeScript: (async () => []) as typeof chrome.scripting.executeScript,
@@ -379,24 +404,28 @@ export const noopLogger: ChromeLogger = {
   error: () => undefined,
 };
 
+type LoggerContext = { consoleRef: Pick<Console, LogLevel> };
+
+const LOGGER_CONTEXT_SYMBOL = Symbol('codex.logger.context');
+
+type InternalLogger = ChromeLogger & { [LOGGER_CONTEXT_SYMBOL]?: LoggerContext };
+
 export function createLogger(namespace: string, consoleRef: Pick<Console, LogLevel> = console): ChromeLogger {
   const prefix = namespace ? `[${namespace}]` : '';
-  return {
+  const logger: InternalLogger = {
     debug: (...args: unknown[]) => consoleRef.debug(prefix, ...args),
     info: (...args: unknown[]) => consoleRef.info(prefix, ...args),
     warn: (...args: unknown[]) => consoleRef.warn(prefix, ...args),
     error: (...args: unknown[]) => consoleRef.error(prefix, ...args),
   };
+  logger[LOGGER_CONTEXT_SYMBOL] = { consoleRef };
+  return logger;
 }
 
 export function createChildLogger(parent: ChromeLogger, namespace: string): ChromeLogger {
-  const prefix = namespace ? `[${namespace}]` : '';
-  return {
-    debug: (...args: unknown[]) => parent.debug(prefix, ...args),
-    info: (...args: unknown[]) => parent.info(prefix, ...args),
-    warn: (...args: unknown[]) => parent.warn(prefix, ...args),
-    error: (...args: unknown[]) => parent.error(prefix, ...args),
-  };
+  const parentContext = (parent as InternalLogger)[LOGGER_CONTEXT_SYMBOL];
+  const consoleRef = parentContext?.consoleRef ?? console;
+  return createLogger(namespace, consoleRef);
 }
 
 export interface ControlledFunction<T extends (...args: any[]) => unknown> {

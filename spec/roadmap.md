@@ -31,6 +31,8 @@
 ---
 
 # Roadmap: Реализация кода (v0.1.0)
+> Прогресс 2025-10-07: заведены отдельные конфиги `vitest.unit.config.ts`, `vitest.contract.config.ts`, `vitest.integration.config.ts` и обновлены npm-скрипты `test:*` для фазы 5.
+
 
 > Отправная точка — полный пакет спецификаций (см. таблицу выше). Ниже перечислены шаги для реализации расширения Chrome с учётом зависимостей и ожидаемых артефактов.
 
@@ -108,16 +110,16 @@
 ## Фаза 5. Тестирование и качество ⏳ (v0.1.0)
 
 - [ ] **Unit tests**
-  - [ ] Подготовить общие моки Chrome API и time-helpers для повторного использования в разных пакетах.
-  - [ ] Покрыть детекторы (D1/D2 + заглушка D3), агрегатор, уведомления, storage helper'ы и verbose-логирование (`vitest`).
-  - [ ] Добавить negative-cases: ошибки записи `storage.session`, неверные сообщения, потерю heartbeat.
-  - [ ] Запланировать тест, подтверждающий переключение RU/EN уведомлений согласно требованию «Уведомления формулируются на языке интерфейса браузера» из `spec/nfr.md`.
+  - [x] Подготовить общие моки Chrome API и time-helpers для повторного использования в разных пакетах *(создан `setupChromeTestEnvironment`, переиспользуется в unit/integration)*.
+  - [x] Покрыть детекторы (D1/D2 + заглушка D3), агрегатор, уведомления, storage helper'ы и verbose-логирование (`vitest`) *(добавлены кейсы сброса pipeline, валидации D3-флага, resilience агрегатора и RU-уведомлений)*.
+  - [x] Добавить negative-cases: ошибки записи `storage.session`, неверные сообщения, потерю heartbeat *(см. unit/background/aggregator.test.ts)*.
+  - [x] Запланировать тест, подтверждающий переключение RU/EN уведомлений согласно требованию «Уведомления формулируются на языке интерфейса браузера» из `spec/nfr.md` *(реализован, опирается на `chrome.i18n.getUILanguage`)*.
 - [ ] **Contract tests**
-  - [ ] Реализовать проверку DTO/state JSON Schema (`ajv`/`schemathesis`) в CI-скрипте.
-  - [ ] Валидировать OpenAPI (`contracts/openapi.yaml`) против background/popup-хендлеров (включая `/background/tasks-heartbeat`) и задокументировать команды запуска.
+  - [x] Реализовать проверку DTO/state JSON Schema (`ajv`/`schemathesis`) в CI-скрипте *(витест-конфиг `vitest.contract.config.ts`, использование `createAjvInstance`)*.
+  - [x] Валидировать OpenAPI (`contracts/openapi.yaml`) против background/popup-хендлеров (включая `/background/tasks-heartbeat`) и задокументировать команды запуска *(msw-сервер, проверка `/background/state`, `/popup/state`)*.
 - [ ] **Локальный HTTP-адаптер для тестов**
-  - [ ] Реализовать `msw` (или аналогичный) адаптер, эмулирующий `/background/tasks-update`, `/background/tasks-heartbeat`, `/background/state`, `/popup/state`.
-  - [ ] Подключить контрактные проверки по `contracts/openapi.yaml`, DTO/State/Settings согласно требованиям `spec/test-plan.md`.
+  - [x] Реализовать `msw` (или аналогичный) адаптер, эмулирующий `/background/tasks-update`, `/background/tasks-heartbeat`, `/background/state`, `/popup/state` *(сервер `setupServer`, хендлеры `useBackgroundHttpHandlers`)*.
+  - [ ] Подключить контрактные проверки по `contracts/openapi.yaml`, DTO/State/Settings согласно требованиям `spec/test-plan.md` *(осталось закрыть акценты UC-2/UC-3 и расширить проверку messages/settings)*.
 - [ ] **Integration tests**
   - [ ] Смоделировать ключевые use-cases (UC-1..UC-3) с фейковым DOM, обменом сообщениями и будильниками.
   - [ ] Проверить устойчивость к перезапуску service worker, закрытию вкладок и переключению verbose-флага.

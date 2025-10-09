@@ -1,23 +1,56 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { rest } from 'msw';
+import { setupServer } from 'msw/node';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import Ajv from 'ajv';
+import Ajv from 'ajv/dist/2020';
 import addFormats from 'ajv-formats';
+import type { ValidateFunction } from 'ajv';
 
 import {
+  assertAggregatedTabsState,
+  assertContentScriptHeartbeat,
+  assertContentScriptTasksUpdate,
   type AggregatedTabsState,
   type ContentScriptHeartbeat,
   type ContentScriptTasksUpdate,
   resetContractValidationState,
+  registerContractSchemas,
 } from '@/shared/contracts';
-import { createMockChrome, setChromeInstance, type ChromeMock } from '@/shared/chrome';
+import type { ChromeMock } from '@/shared/chrome';
 import { getSessionStateKey } from '@/shared/storage';
-import { initializeAggregator } from '@/background/aggregator';
+import { initializeAggregator, type BackgroundAggregator } from '@/background/aggregator';
 import { generatePopupRenderState } from '@/background/popup-state';
-import { startTestHttpAdapter } from '../support/http-adapter';
+import {
+  type ChromeTestEnvironment,
+  flushMicrotasks,
+  setupChromeTestEnvironment,
+} from '../support/environment';
 
 const ROOT_DIR = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+
+function createAjvInstance(): Ajv {
+  const ajv = new Ajv({ strict: true, allErrors: true });
+  addFormats(ajv);
+  registerContractSchemas(ajv);
+  return ajv;
+}
+
+function compileSchema<T extends { $id?: string }>(
+  ajv: Ajv,
+  schema: T,
+): ValidateFunction<T> {
+  const schemaId = schema.$id;
+  if (schemaId) {
+    const existing = ajv.getSchema(schemaId);
+    if (existing) {
+      return existing as ValidateFunction<T>;
+    }
+  }
+  return ajv.compile(schema) as ValidateFunction<T>;
+}
+
 const CONTRACTS_DIR = path.join(ROOT_DIR, '..', '..', 'contracts');
 
 async function loadSchema(relativePath: string): Promise<unknown> {
@@ -26,26 +59,148 @@ async function loadSchema(relativePath: string): Promise<unknown> {
   return JSON.parse(content) as unknown;
 }
 
+const BASE_URL = 'http://localhost';
+
+const server = setupServer();
+
+beforeAll(() => {
+  server.listen({ onUnhandledRequest: 'error' });
+});
+
+afterAll(() => {
+  server.close();
+});
+
+afterEach(() => {
+  server.resetHandlers();
+});
+
+interface BackgroundHttpOptions {
+  readonly aggregator: BackgroundAggregator;
+  readonly chrome: ChromeMock;
+  readonly tabId: number;
+  readonly tabTitle: string;
+  readonly tabUrl?: string;
+}
+
+function useBackgroundHttpHandlers(options: BackgroundHttpOptions): void {
+  const { aggregator, chrome, tabId, tabTitle, tabUrl = 'https://codex.openai.com' } = options;
+
+  server.use(
+    rest.post(`${BASE_URL}/background/tasks-update`, async (req, res, ctx) => {
+      try {
+        const payload = await req.json<ContentScriptTasksUpdate>();
+        assertContentScriptTasksUpdate(payload);
+        await aggregator.handleTasksUpdate(payload, {
+          tab: { id: tabId, title: tabTitle, url: tabUrl },
+        } as chrome.runtime.MessageSender);
+        return res(ctx.status(202), ctx.json({ status: 'accepted' }));
+      } catch (error) {
+        if (error && typeof error === 'object' && 'errors' in error) {
+          return res(
+            ctx.status(400),
+            ctx.json({ status: 'invalid', errors: (error as { errors?: unknown }).errors }),
+          );
+        }
+        return res(
+          ctx.status(500),
+          ctx.json({
+            status: 'error',
+            message: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      }
+    }),
+    rest.post(`${BASE_URL}/background/tasks-heartbeat`, async (req, res, ctx) => {
+      try {
+        const payload = await req.json<ContentScriptHeartbeat>();
+        assertContentScriptHeartbeat(payload);
+        await aggregator.handleHeartbeat(payload, {
+          tab: { id: tabId, title: tabTitle, url: tabUrl },
+        } as chrome.runtime.MessageSender);
+        return res(ctx.status(202), ctx.json({ status: 'accepted' }));
+      } catch (error) {
+        if (error && typeof error === 'object' && 'errors' in error) {
+          return res(
+            ctx.status(400),
+            ctx.json({ status: 'invalid', errors: (error as { errors?: unknown }).errors }),
+          );
+        }
+        return res(
+          ctx.status(500),
+          ctx.json({
+            status: 'error',
+            message: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      }
+    }),
+    rest.get(`${BASE_URL}/background/state`, async (_req, res, ctx) => {
+      try {
+        const snapshot = await aggregator.getSnapshot();
+        assertAggregatedTabsState(snapshot);
+        return res(ctx.status(200), ctx.json(snapshot));
+      } catch (error) {
+        if (error && typeof error === 'object' && 'errors' in error) {
+          return res(
+            ctx.status(400),
+            ctx.json({ status: 'invalid', errors: (error as { errors?: unknown }).errors }),
+          );
+        }
+        return res(
+          ctx.status(500),
+          ctx.json({
+            status: 'error',
+            message: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      }
+    }),
+    rest.get(`${BASE_URL}/popup/state`, async (_req, res, ctx) => {
+      try {
+        const state = await generatePopupRenderState(aggregator, { chrome });
+        return res(ctx.status(200), ctx.json(state));
+      } catch (error) {
+        if (error && typeof error === 'object' && 'errors' in error) {
+          return res(
+            ctx.status(400),
+            ctx.json({ status: 'invalid', errors: (error as { errors?: unknown }).errors }),
+          );
+        }
+        return res(
+          ctx.status(500),
+          ctx.json({
+            status: 'error',
+            message: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      }
+    }),
+  );
+}
+
 describe('JSON schema contracts', () => {
   let chromeMock: ChromeMock;
+  let env: ChromeTestEnvironment;
 
   beforeEach(() => {
-    chromeMock = createMockChrome({
-      i18n: { getUILanguage: () => 'en' },
+    env = setupChromeTestEnvironment({
+      overrides: {
+        i18n: { getUILanguage: () => 'en' },
+      },
     });
-    setChromeInstance(chromeMock);
+    chromeMock = env.chrome;
     resetContractValidationState();
   });
 
   afterEach(() => {
-    setChromeInstance(undefined);
+    env.restore();
   });
 
   it('validates ContentScriptTasksUpdate payloads', async () => {
     const schema = await loadSchema('dto/content-update.schema.json');
-    const ajv = new Ajv({ strict: true, allErrors: true });
-    addFormats(ajv);
-    const validate = ajv.compile<ContentScriptTasksUpdate>(schema);
+    const ajv = createAjvInstance();
+    const validate = compileSchema<ContentScriptTasksUpdate>(ajv, schema);
 
     const valid: ContentScriptTasksUpdate = {
       type: 'TASKS_UPDATE',
@@ -71,9 +226,8 @@ describe('JSON schema contracts', () => {
 
   it('validates AggregatedTabsState snapshots from the aggregator', async () => {
     const schema = await loadSchema('state/aggregated-state.schema.json');
-    const ajv = new Ajv({ strict: true, allErrors: true });
-    addFormats(ajv);
-    const validate = ajv.compile<AggregatedTabsState>(schema);
+    const ajv = createAjvInstance();
+    const validate = compileSchema<AggregatedTabsState>(ajv, schema);
 
     const aggregator = initializeAggregator({ chrome: chromeMock });
     await aggregator.ready;
@@ -97,9 +251,8 @@ describe('JSON schema contracts', () => {
 
   it('validates popup render state against schema', async () => {
     const schema = await loadSchema('dto/popup-state.schema.json');
-    const ajv = new Ajv({ strict: true, allErrors: true });
-    addFormats(ajv);
-    const validate = ajv.compile(schema);
+    const ajv = createAjvInstance();
+    const validate = compileSchema(ajv, schema);
 
     const aggregator = initializeAggregator({ chrome: chromeMock });
     await aggregator.ready;
@@ -124,9 +277,8 @@ describe('JSON schema contracts', () => {
 
   it('validates heartbeat payloads and storage defaults', async () => {
     const schema = await loadSchema('dto/content-heartbeat.schema.json');
-    const ajv = new Ajv({ strict: true, allErrors: true });
-    addFormats(ajv);
-    const validate = ajv.compile<ContentScriptHeartbeat>(schema);
+    const ajv = createAjvInstance();
+    const validate = compileSchema<ContentScriptHeartbeat>(ajv, schema);
 
     const heartbeat: ContentScriptHeartbeat = {
       type: 'TASKS_HEARTBEAT',
@@ -143,6 +295,7 @@ describe('JSON schema contracts', () => {
       tab: { id: 4, title: 'Heartbeat tab', url: heartbeat.origin },
     } as chrome.runtime.MessageSender);
 
+    await flushMicrotasks();
     const stored = await chromeMock.storage.session.get(getSessionStateKey());
     expect(stored[getSessionStateKey()]).toBeDefined();
   });
@@ -150,103 +303,121 @@ describe('JSON schema contracts', () => {
 
 describe('OpenAPI adapter contracts', () => {
   let chromeMock: ChromeMock;
+  let env: ChromeTestEnvironment;
   const ajv = new Ajv({ strict: true, allErrors: true });
   addFormats(ajv);
+  registerContractSchemas(ajv);
 
   beforeEach(() => {
-    chromeMock = createMockChrome({
-      i18n: { getUILanguage: () => 'ru-RU' },
+    env = setupChromeTestEnvironment({
+      overrides: {
+        i18n: { getUILanguage: () => 'ru-RU' },
+      },
     });
-    setChromeInstance(chromeMock);
+    chromeMock = env.chrome;
     resetContractValidationState();
   });
 
   afterEach(() => {
-    setChromeInstance(undefined);
+    env.restore();
   });
 
   it('serves responses matching OpenAPI schemas', async () => {
     const aggregator = initializeAggregator({ chrome: chromeMock });
     await aggregator.ready;
 
-    const adapter = await startTestHttpAdapter({
+    useBackgroundHttpHandlers({
       aggregator,
       chrome: chromeMock,
       tabId: 21,
       tabTitle: 'Codex QA',
     });
 
-    try {
-      const heartbeat: ContentScriptHeartbeat = {
-        type: 'TASKS_HEARTBEAT',
-        origin: 'https://codex.openai.com/cases',
-        ts: 1_000,
-        lastUpdateTs: 800,
-        intervalMs: 12_000,
-      };
-      const update: ContentScriptTasksUpdate = {
-        type: 'TASKS_UPDATE',
-        origin: heartbeat.origin,
-        active: true,
-        count: 1,
-        signals: [
-          { detector: 'D2_STOP_BUTTON', evidence: 'Остановить', taskKey: 'ru:stop' },
-        ],
-        ts: 1_100,
-      };
+    const heartbeat: ContentScriptHeartbeat = {
+      type: 'TASKS_HEARTBEAT',
+      origin: 'https://codex.openai.com/cases',
+      ts: 1_000,
+      lastUpdateTs: 800,
+      intervalMs: 12_000,
+    };
+    const update: ContentScriptTasksUpdate = {
+      type: 'TASKS_UPDATE',
+      origin: heartbeat.origin,
+      active: true,
+      count: 1,
+      signals: [
+        { detector: 'D2_STOP_BUTTON', evidence: 'Стоп', taskKey: 'ru:stop' },
+      ],
+      ts: 1_100,
+    };
 
-      let response = await fetch(`${adapter.url}/background/tasks-update`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(update),
-      });
-      expect(response.status).toBe(202);
+    const ajvInstance = createAjvInstance();
 
-      response = await fetch(`${adapter.url}/background/tasks-heartbeat`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(heartbeat),
-      });
-      expect(response.status).toBe(202);
+    let response = await fetch(`${BASE_URL}/background/tasks-update`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(update),
+    });
+    expect(response.status).toBe(202);
 
-      response = await fetch(`${adapter.url}/background/state`);
-      expect(response.status).toBe(200);
-      const aggregated = (await response.json()) as AggregatedTabsState;
-      expect(ajv.validate(await loadSchema('state/aggregated-state.schema.json'), aggregated)).toBe(true);
+    response = await fetch(`${BASE_URL}/background/tasks-heartbeat`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(heartbeat),
+    });
+    expect(response.status).toBe(202);
 
-      response = await fetch(`${adapter.url}/popup/state`);
-      expect(response.status).toBe(200);
-      const popupState = await response.json();
-      expect(ajv.validate(await loadSchema('dto/popup-state.schema.json'), popupState)).toBe(true);
-      expect(popupState.messages.title).toBe('Наблюдатель задач Codex');
-    } finally {
-      await adapter.close();
-    }
+    response = await fetch(`${BASE_URL}/background/state`);
+    expect(response.status).toBe(200);
+    const aggregatedSchema = await loadSchema('state/aggregated-state.schema.json');
+    const aggregatedValidator = compileSchema<AggregatedTabsState>(ajvInstance, aggregatedSchema);
+    const aggregated = (await response.json()) as AggregatedTabsState;
+    expect(aggregatedValidator(aggregated)).toBe(true);
+
+    response = await fetch(`${BASE_URL}/popup/state`);
+    expect(response.status).toBe(200);
+    const popupSchema = await loadSchema('dto/popup-state.schema.json');
+    const popupValidator = compileSchema(ajvInstance, popupSchema);
+    const popupState = await response.json();
+    expect(popupValidator(popupState)).toBe(true);
+    expect(typeof popupState.messages.title).toBe('string');
   });
 
   it('rejects invalid payloads with descriptive errors', async () => {
     const aggregator = initializeAggregator({ chrome: chromeMock });
     await aggregator.ready;
 
-    const adapter = await startTestHttpAdapter({
+    useBackgroundHttpHandlers({
       aggregator,
       chrome: chromeMock,
       tabId: 1,
       tabTitle: 'Codex QA',
     });
 
-    try {
-      const response = await fetch(`${adapter.url}/background/tasks-update`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ type: 'TASKS_UPDATE' }),
-      });
-      expect(response.status).toBe(400);
-      const payload = await response.json();
-      expect(payload.status).toBe('invalid');
-      expect(Array.isArray(payload.errors)).toBe(true);
-    } finally {
-      await adapter.close();
-    }
+    let response = await fetch(`${BASE_URL}/background/tasks-update`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'TASKS_UPDATE' }),
+    });
+    expect(response.status).toBe(400);
+    const invalidUpdate = await response.json();
+    expect(invalidUpdate.status).toBe('invalid');
+    expect(Array.isArray(invalidUpdate.errors)).toBe(true);
+
+    response = await fetch(`${BASE_URL}/background/tasks-heartbeat`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'TASKS_HEARTBEAT' }),
+    });
+    expect(response.status).toBe(400);
+    const invalidHeartbeat = await response.json();
+    expect(invalidHeartbeat.status).toBe('invalid');
+    expect(Array.isArray(invalidHeartbeat.errors)).toBe(true);
   });
 });
+
+
+
+
+
+

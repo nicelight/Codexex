@@ -4,23 +4,30 @@ import { ContentScriptRuntime } from '@/content/runtime';
 import { initializeAggregator } from '@/background/aggregator';
 import { initializeNotifications } from '@/background/notifications';
 import { registerAlarms } from '@/background/alarms';
-import { createMockChrome, setChromeInstance, type ChromeMock } from '@/shared/chrome';
+import type { ChromeMock } from '@/shared/chrome';
 import { createBackgroundBridge } from '../support/background-bridge';
+import {
+  type ChromeTestEnvironment,
+  advanceTimersByTime,
+  setupChromeTestEnvironment,
+} from '../support/environment';
 
 describe('integration use-cases', () => {
   let chromeMock: ChromeMock;
+  let env: ChromeTestEnvironment;
 
   beforeEach(() => {
-    vi.useFakeTimers();
-    chromeMock = createMockChrome({
-      i18n: { getUILanguage: () => 'en-US' },
+    env = setupChromeTestEnvironment({
+      installFakeTimers: true,
+      overrides: {
+        i18n: { getUILanguage: () => 'en-US' },
+      },
     });
-    setChromeInstance(chromeMock);
+    chromeMock = env.chrome;
   });
 
   afterEach(() => {
-    setChromeInstance(undefined);
-    vi.useRealTimers();
+    env.restore();
   });
 
   it('delivers notification when all tasks finish after debounce window', async () => {
@@ -47,7 +54,7 @@ describe('integration use-cases', () => {
       </div>
     `;
     document.body.appendChild(document.createElement('span'));
-    await vi.advanceTimersByTimeAsync(20);
+    await advanceTimersByTime(20);
     await vi.runOnlyPendingTimersAsync();
 
     let snapshot = await aggregator.getSnapshot();
@@ -55,14 +62,12 @@ describe('integration use-cases', () => {
 
     document.body.innerHTML = '';
     document.body.appendChild(document.createElement('span'));
-    await vi.advanceTimersByTimeAsync(500);
-    await vi.runOnlyPendingTimersAsync();
+    await advanceTimersByTime(1_500);
 
     snapshot = await aggregator.getSnapshot();
     expect(snapshot.debounce.since).toBeGreaterThan(0);
 
-    await vi.advanceTimersByTimeAsync(12_000);
-    await vi.runOnlyPendingTimersAsync();
+    await advanceTimersByTime(12_000);
 
     expect(notificationCreate).toHaveBeenCalledTimes(1);
     snapshot = await aggregator.getSnapshot();
@@ -90,11 +95,21 @@ describe('integration use-cases', () => {
     await runtime.start();
     await vi.runOnlyPendingTimersAsync();
 
+    const runtimeInternals = runtime as unknown as {
+      heartbeatTimer?: ReturnType<typeof setTimeout>;
+      scheduleHeartbeat: () => void;
+    };
+    if (runtimeInternals.heartbeatTimer) {
+      clearTimeout(runtimeInternals.heartbeatTimer);
+      runtimeInternals.heartbeatTimer = undefined;
+    }
+    runtimeInternals.scheduleHeartbeat = () => undefined;
+
     let snapshot = await aggregator.getSnapshot();
     expect(Object.keys(snapshot.tabs)).toContain('42');
     const initialHeartbeatTs = snapshot.tabs['42'].heartbeat.lastReceivedAt;
 
-    await vi.advanceTimersByTimeAsync(46_000);
+    await advanceTimersByTime(46_000);
     chromeMock.__events.alarms.onAlarm.emit({ name: 'codex-poll' } as chrome.alarms.Alarm);
     await vi.runOnlyPendingTimersAsync();
 

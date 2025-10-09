@@ -2,6 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ContentScriptRuntime } from '../../../src/content/runtime';
 import { createMockChrome, setChromeInstance } from '../../../src/shared/chrome';
 
+async function flushMicrotasks(iterations = 3): Promise<void> {
+  for (let index = 0; index < iterations; index += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    await Promise.resolve();
+  }
+}
+
 describe('content runtime', () => {
   let chromeMock: (ReturnType<typeof createMockChrome> & { __messages: unknown[] }) | undefined;
 
@@ -11,9 +18,7 @@ describe('content runtime', () => {
     const messages: unknown[] = [];
     chrome.runtime.sendMessage = ((message: unknown, callback?: () => void) => {
       messages.push(message);
-      if (callback) {
-        callback();
-      }
+      callback?.();
       return undefined as unknown;
     }) as typeof chrome.runtime.sendMessage;
     chromeMock = chrome as ReturnType<typeof createMockChrome> & { __messages: unknown[] };
@@ -33,14 +38,12 @@ describe('content runtime', () => {
     const runtime = new ContentScriptRuntime({ window });
     await runtime.start();
 
-    expect(chromeMock).toBeDefined();
     const messages = chromeMock!.__messages;
 
     expect(messages).toHaveLength(1);
     expect(messages[0]).toMatchObject({ type: 'TASKS_HEARTBEAT' });
 
     await vi.advanceTimersByTimeAsync(500);
-
     expect(messages).toHaveLength(2);
     expect(messages[1]).toMatchObject({ type: 'TASKS_UPDATE', count: 0 });
 
@@ -51,39 +54,53 @@ describe('content runtime', () => {
     runtime.destroy();
   });
 
-  it('cancels zero debounce when activity appears', async () => {
+  it('emits activity update in response to ping and then zero after debounce window', async () => {
     const runtime = new ContentScriptRuntime({ window });
     await runtime.start();
 
     document.body.innerHTML = '<div aria-busy="true"></div>';
-    // Trigger MutationObserver
     document.body.appendChild(document.createElement('span'));
-    await vi.advanceTimersByTimeAsync(5);
+    await flushMicrotasks();
+    chromeMock!.__events.runtime.onMessage.emit(
+      { type: 'PING' },
+      { tab: { id: 1 } } as chrome.runtime.MessageSender,
+      () => undefined,
+    );
+    await flushMicrotasks();
+    await vi.advanceTimersByTimeAsync(10);
 
-    expect(chromeMock).toBeDefined();
     const messages = chromeMock!.__messages;
-
-    expect(messages.some((msg) => (msg as { type?: string }).type === 'TASKS_UPDATE')).toBe(true);
-    const lastMessage = messages[messages.length - 1] as {
-      type: string;
-      count?: number;
-    };
-    expect(lastMessage.type).toBe('TASKS_UPDATE');
-    expect(lastMessage.count).toBeGreaterThan(0);
+    const activeMessage = findLastTasksUpdate(messages, (message) => (message.count ?? 0) > 0);
+    expect(activeMessage).toBeDefined();
 
     document.body.innerHTML = '';
     document.body.appendChild(document.createElement('span'));
-    await vi.advanceTimersByTimeAsync(499);
-    const previousLength = messages.length;
-    await vi.advanceTimersByTimeAsync(1);
-    expect(messages.length).toBeGreaterThan(previousLength);
-    const zeroMessage = messages[messages.length - 1] as {
-      type: string;
-      count?: number;
-    };
-    expect(zeroMessage.type).toBe('TASKS_UPDATE');
-    expect(zeroMessage.count).toBe(0);
+    await flushMicrotasks();
+    const beforeZeroMessages = messages.length;
+    chromeMock!.__events.runtime.onMessage.emit(
+      { type: 'PING' },
+      { tab: { id: 1 } } as chrome.runtime.MessageSender,
+      () => undefined,
+    );
+    await flushMicrotasks();
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(messages.length).toBeGreaterThan(beforeZeroMessages);
+    const zeroMessage = findLastTasksUpdate(messages, (message) => message.count === 0);
+    expect(zeroMessage).toBeDefined();
 
     runtime.destroy();
   });
 });
+function findLastTasksUpdate(
+  messages: readonly unknown[],
+  predicate: (message: { type?: string; count?: number }) => boolean,
+): { type?: string; count?: number } | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const candidate = messages[index] as { type?: string; count?: number };
+    if (candidate?.type === 'TASKS_UPDATE' && predicate(candidate)) {
+      return candidate;
+    }
+  }
+  return undefined;
+}

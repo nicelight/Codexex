@@ -1,27 +1,28 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import type { AggregatedTabsState } from '../../../src/shared/contracts';
-import {
-  createMockChrome,
-  setChromeInstance,
-  type ChromeMock,
-} from '../../../src/shared/chrome';
 import type {
   AggregatorChangeEvent,
   AggregatorEventReason,
   BackgroundAggregator,
 } from '../../../src/background/aggregator';
 import { registerAlarms } from '../../../src/background/alarms';
+import {
+  type ChromeTestEnvironment,
+  flushMicrotasks,
+  setupChromeTestEnvironment,
+} from '../../support/environment';
 
 describe('background alarms', () => {
-  let chromeMock: ChromeMock;
+  let chromeMock: ReturnType<typeof setupChromeTestEnvironment>['chrome'];
+  let env: ChromeTestEnvironment;
 
   beforeEach(() => {
-    chromeMock = createMockChrome();
-    setChromeInstance(chromeMock);
+    env = setupChromeTestEnvironment();
+    chromeMock = env.chrome;
   });
 
   afterEach(() => {
-    setChromeInstance(undefined);
+    env.restore();
   });
 
   it('enforces autoDiscardable=false for tracked tabs', async () => {
@@ -50,7 +51,7 @@ describe('background alarms', () => {
     const aggregator = createAggregatorStub(state);
     registerAlarms(aggregator, { chrome: chromeMock });
 
-    await Promise.resolve();
+    await flushMicrotasks();
     expect(chromeMock.tabs.update).toHaveBeenCalledWith(5, { autoDiscardable: false });
 
     chromeMock.tabs.update.mockClear();
@@ -59,7 +60,7 @@ describe('background alarms', () => {
       active: false,
     };
     emitChange(aggregator, state, 'tasks-update');
-    await Promise.resolve();
+    await flushMicrotasks();
     expect(chromeMock.tabs.update).toHaveBeenCalledWith(6, { autoDiscardable: false });
   });
 
@@ -92,7 +93,7 @@ describe('background alarms', () => {
     registerAlarms(aggregator, { chrome: chromeMock });
 
     chromeMock.__events.alarms.onAlarm.emit({ name: 'codex-poll' } as chrome.alarms.Alarm);
-    await Promise.resolve();
+    await flushMicrotasks();
 
     expect(aggregator.evaluateHeartbeatStatuses).toHaveBeenCalled();
     expect(chromeMock.tabs.sendMessage).toHaveBeenCalledWith(7, { type: 'PING' });

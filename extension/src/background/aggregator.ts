@@ -1,4 +1,4 @@
-import {
+﻿import {
   assertAggregatedTabsState,
   type AggregatedDebounceState,
   type AggregatedHeartbeatState,
@@ -123,9 +123,10 @@ class BackgroundAggregatorImpl implements BackgroundAggregator {
       (next, previous) => {
         const tabKey = String(tabId);
         const tabTitle = this.resolveTitle(sender, message.origin);
-        const existing = next.tabs[tabKey] ??
-          this.createTabState(message.origin, tabTitle, message.ts);
-        let mutated = false;
+        const hadExisting = Object.prototype.hasOwnProperty.call(previous?.tabs ?? {}, tabKey);
+        const existing =
+          next.tabs[tabKey] ?? this.createTabState(message.origin, tabTitle, message.ts);
+        let mutated = !hadExisting;
 
         if (existing.origin !== message.origin) {
           existing.origin = message.origin;
@@ -179,7 +180,8 @@ class BackgroundAggregatorImpl implements BackgroundAggregator {
           next.lastTotal = nextTotal;
           mutated = true;
         }
-        mutated = this.applyDebounceTransition(next, previous.lastTotal) || mutated;
+        const previousTotal = previous?.lastTotal ?? 0;
+        mutated = this.applyDebounceTransition(next, previousTotal) || mutated;
         return mutated;
       },
       { tabId },
@@ -199,14 +201,15 @@ class BackgroundAggregatorImpl implements BackgroundAggregator {
     }
     await this.updateState(
       'heartbeat',
-      (next) => {
+      (next, previous) => {
         const tabKey = String(tabId);
         const tabTitle = this.resolveTitle(sender, message.origin);
         const heartbeatTs = Math.max(0, message.ts);
         const updateTs = Math.max(heartbeatTs, message.lastUpdateTs);
-        const existing = next.tabs[tabKey] ??
-          this.createTabState(message.origin, tabTitle, updateTs);
-        let mutated = false;
+        const hadExisting = Object.prototype.hasOwnProperty.call(previous?.tabs ?? {}, tabKey);
+        const existing =
+          next.tabs[tabKey] ?? this.createTabState(message.origin, tabTitle, updateTs);
+        let mutated = !hadExisting;
 
         if (existing.origin !== message.origin) {
           existing.origin = message.origin;
@@ -589,3 +592,5 @@ function delay(ms: number): Promise<void> {
     setTimeout(resolve, ms);
   });
 }
+
+
