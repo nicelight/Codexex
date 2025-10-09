@@ -72,6 +72,44 @@ describe('content detectors', () => {
     expect(signal?.taskKey).toBe('abc123');
   });
 
+  it('detects icon-only stop controls by data-testid hints', () => {
+    document.documentElement.lang = 'en';
+    document.body.innerHTML = `
+      <div class="task" data-task-id="xyz789">
+        <button class="btn" data-testid="task-stop-button">
+          <span aria-hidden="true">
+            <span class="inline-flex size-4 items-center justify-center rounded-full border">
+              <span class="size-2 rounded-sm bg-current"></span>
+            </span>
+          </span>
+        </button>
+        <button class="btn" data-testid="taskCardStopButton">
+          <span aria-hidden="true">
+            <span class="inline-flex size-4 items-center justify-center rounded-full border">
+              <span class="size-2 rounded-sm bg-current"></span>
+            </span>
+          </span>
+        </button>
+      </div>
+    `;
+
+    const pipeline = createDetectorPipeline({
+      document,
+      logger: noopLogger,
+      enableCardHeuristic: false,
+    });
+    const scanner = new ActivityScanner(pipeline, noopLogger);
+    const snapshot = scanner.scan(Date.now());
+
+    expect(snapshot.active).toBe(true);
+    expect(snapshot.count).toBe(2);
+    const stopSignals = snapshot.signals.filter((item) => item.detector === 'D2_STOP_BUTTON');
+    expect(stopSignals).toHaveLength(2);
+    stopSignals.forEach((signal) => {
+      expect(signal.taskKey).toBe('xyz789');
+    });
+  });
+
   it('resets detector pipeline caches on reset', () => {
     document.documentElement.lang = 'en';
     document.body.innerHTML = `<button class="btn">Stop</button>`;
