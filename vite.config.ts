@@ -14,7 +14,7 @@ const popupEntry = path.resolve(extensionRoot, 'src/popup/index.html');
 
 const entryFileNameMap = new Map([
   [path.relative(extensionRoot, backgroundEntry), 'src/background.js'],
-  [path.relative(extensionRoot, contentEntry), 'src/content.js'],
+  [path.relative(extensionRoot, contentEntry), 'src/content.main.js'],
 ]);
 
 const POPUP_HTML_OUTPUT = 'src/popup.html';
@@ -83,14 +83,30 @@ function manifestCopyPlugin(): PluginOption {
         manifest.action.default_popup = popupHtmlFileName ?? POPUP_HTML_OUTPUT;
       }
 
+      const contentLoaderFileName = 'src/content.js';
+
       if (Array.isArray(manifest.content_scripts)) {
         manifest.content_scripts = manifest.content_scripts.map((script: { js?: string[] }) => {
           if (Array.isArray(script.js) && script.js.length > 0) {
-            return { ...script, js: [contentFileName] };
+            return { ...script, js: [contentLoaderFileName] };
           }
           return script;
         });
       }
+
+      const loaderSource = `(() => {
+  const moduleUrl = chrome.runtime.getURL(${JSON.stringify(contentFileName)});
+
+  import(moduleUrl).catch((error) => {
+    console.error('Failed to bootstrap Codex content script module', error);
+  });
+})();\n`;
+
+      this.emitFile({
+        type: 'asset',
+        fileName: contentLoaderFileName,
+        source: loaderSource,
+      });
 
       const updatedManifest = `${JSON.stringify(manifest, null, 2)}\n`;
 
