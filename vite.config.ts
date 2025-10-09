@@ -19,6 +19,8 @@ const entryFileNameMap = new Map([
 
 const POPUP_HTML_OUTPUT = 'src/popup.html';
 const CONTENT_ASSET_GLOB = 'assets/*';
+const MEDIA_ASSET_PATH = path.resolve(projectRoot, 'media', 'oh-oh-icq-sound.mp3');
+const MEDIA_ASSET_OUTPUT = 'media/oh-oh-icq-sound.mp3';
 
 function findChunkFileName(bundle: OutputBundle, entryPath: string): string {
   const normalizedEntry = path.normalize(entryPath);
@@ -78,7 +80,7 @@ function manifestCopyPlugin(): PluginOption {
 
       const contentLoaderFileName = 'src/content.js';
       const ensureContentResources = () => {
-        const requiredResources = new Set([contentFileName, CONTENT_ASSET_GLOB]);
+        const requiredResources = new Set([contentFileName, CONTENT_ASSET_GLOB, MEDIA_ASSET_OUTPUT]);
 
         if (!Array.isArray(manifest.web_accessible_resources) || manifest.web_accessible_resources.length === 0) {
           manifest.web_accessible_resources = [
@@ -137,6 +139,17 @@ function manifestCopyPlugin(): PluginOption {
         fileName: contentLoaderFileName,
         source: loaderSource,
       });
+
+      try {
+        const mediaSource = await readFile(MEDIA_ASSET_PATH);
+        this.emitFile({
+          type: 'asset',
+          fileName: MEDIA_ASSET_OUTPUT,
+          source: mediaSource,
+        });
+      } catch (error) {
+        this.warn(`Failed to bundle media asset "${MEDIA_ASSET_PATH}": ${String(error)}`);
+      }
 
       ensureContentResources();
 

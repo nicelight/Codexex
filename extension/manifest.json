@@ -28,7 +28,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["src/content.main.js", "assets/*"],
+      "resources": ["src/content.main.js", "assets/*", "media/oh-oh-icq-sound.mp3"],
       "matches": [
         "https://*.openai.com/*",
         "https://*.chatgpt.com/*"

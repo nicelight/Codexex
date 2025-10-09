@@ -78,3 +78,8 @@
 - Extend background bootstrap with action badge controller (see spec/action-indicator.md).
 - Derive badge text/color from AggregatedState.lastTotal; throttle updates to <=4 Hz.
 - Ensure controller exposes pure helpers for unit tests and degrades gracefully when chrome.action is missing.
+### Audio completion cue (v0.1.x)
+- Инициализировать аудиоконтроллер в background (Web Audio API, OffscreenCanvas не требуется).
+- Popup отправляет POPUP_ACTIVATE_AUDIO, создавая AudioContext и подготавливая gain/gain envelope.
+- Контроллер слушает изменения агрегатора и воспроизводит сигнал (mp3/осциллятор) при переходе счётчика из >0 в 0.
+- Подготовить расширяемые точки для будущих настроек громкости и отключения.

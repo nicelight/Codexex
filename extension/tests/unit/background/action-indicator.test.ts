@@ -10,6 +10,45 @@ import {
 } from '../../../src/shared/chrome';
 import type { AggregatorChangeEvent, BackgroundAggregator } from '../../../src/background/aggregator';
 
+class FakeImageData {
+  public readonly data: Uint8ClampedArray;
+  public readonly width: number;
+  public readonly height: number;
+
+  constructor(width: number, height: number, data?: Uint8ClampedArray) {
+    this.width = width;
+    this.height = height;
+    this.data = data ?? new Uint8ClampedArray(width * height * 4);
+  }
+}
+
+class FakeOffscreenContext {
+  public fillStyle = '';
+  public font = '';
+  public textAlign: CanvasTextAlign = 'center';
+  public textBaseline: CanvasTextBaseline = 'middle';
+
+  constructor(private readonly width: number, private readonly height: number) {}
+
+  clearRect(): void {}
+
+  fillText(): void {}
+
+  strokeText(): void {}
+
+  getImageData(): ImageData {
+    return new FakeImageData(this.width, this.height) as unknown as ImageData;
+  }
+}
+
+class FakeOffscreenCanvas {
+  constructor(private readonly width: number, private readonly height: number) {}
+
+  getContext(): FakeOffscreenContext {
+    return new FakeOffscreenContext(this.width, this.height);
+  }
+}
+
 class StubAggregator implements BackgroundAggregator {
   public readonly ready = Promise.resolve();
   private state: AggregatedTabsState;
@@ -74,9 +113,17 @@ class StubAggregator implements BackgroundAggregator {
 
 describe('action-indicator', () => {
   let chromeMock: ChromeMock;
+  const originalImageData = globalThis.ImageData;
+  const originalOffscreenCanvas = globalThis.OffscreenCanvas;
 
   beforeEach(() => {
     vi.useFakeTimers();
+    if (typeof globalThis.ImageData === 'undefined') {
+      globalThis.ImageData = FakeImageData as unknown as typeof ImageData;
+    }
+    if (typeof globalThis.OffscreenCanvas === 'undefined') {
+      globalThis.OffscreenCanvas = FakeOffscreenCanvas as unknown as typeof OffscreenCanvas;
+    }
     chromeMock = createMockChrome();
     setChromeInstance(chromeMock);
   });
@@ -84,6 +131,16 @@ describe('action-indicator', () => {
   afterEach(() => {
     vi.useRealTimers();
     setChromeInstance(undefined);
+    if (originalImageData) {
+      globalThis.ImageData = originalImageData;
+    } else {
+      delete (globalThis as Partial<typeof globalThis>).ImageData;
+    }
+    if (originalOffscreenCanvas) {
+      globalThis.OffscreenCanvas = originalOffscreenCanvas;
+    } else {
+      delete (globalThis as Partial<typeof globalThis>).OffscreenCanvas;
+    }
   });
 
   test('deriveBadgeVisual maps palette', () => {
@@ -93,29 +150,25 @@ describe('action-indicator', () => {
     expect(deriveBadgeVisual(2)).toEqual({ text: '2', color: '#F2542D' });
     expect(deriveBadgeVisual(3)).toEqual({ text: '3', color: '#E11D48' });
     expect(deriveBadgeVisual(7)).toEqual({ text: '7', color: '#C2185B' });
-    expect(deriveBadgeVisual(120)).toEqual({ text: '99+', color: '#C2185B' });
+    expect(deriveBadgeVisual(120)).toEqual({ text: '9', color: '#C2185B' });
   });
 
-  test('initializeActionIndicator updates badge and title', async () => {
+  test('initializeActionIndicator updates icon and title', async () => {
     const action = chromeMock.action!;
     const aggregator = new StubAggregator(0);
 
     const controller = initializeActionIndicator(aggregator, { chrome: chromeMock, logger: noopLogger });
     await vi.advanceTimersByTimeAsync(0);
-    aggregator.emitTotal(3);
+    aggregator.emitTotal(12);
     await vi.advanceTimersByTimeAsync(250);
 
-    expect(action.setBadgeText).toHaveBeenCalled();
-    const lastBadgeTextCall = (action.setBadgeText as unknown as vi.Mock).mock.calls.pop();
-    expect(lastBadgeTextCall?.[0]).toEqual({ text: '3' });
-
-    expect(action.setBadgeTextColor).toHaveBeenCalled();
-    const colorCall = (action.setBadgeTextColor as unknown as vi.Mock).mock.calls.pop();
-    expect(colorCall?.[0]).toEqual({ color: '#E11D48' });
-
+    expect(action.setBadgeText).toHaveBeenCalledWith({ text: '' });
+    expect(action.setIcon).toHaveBeenCalled();
+    const iconCall = (action.setIcon as unknown as vi.Mock).mock.calls.pop();
+    expect(iconCall?.[0]?.imageData).toBeDefined();
     expect(action.setTitle).toHaveBeenCalled();
     const titleCall = (action.setTitle as unknown as vi.Mock).mock.calls.pop();
-    expect(titleCall?.[0]?.title).toContain('3 active Codex tasks');
+    expect(titleCall?.[0]?.title).toContain('9 active Codex tasks');
 
     controller.dispose();
   });

@@ -1,6 +1,6 @@
 import type { PopupRenderState, PopupRenderStateTab } from '../shared/contracts';
 import { getDefaultPopupMessages } from './messages';
-import { requestPopupState } from './state';
+import { requestPopupState, activateAudioSupport } from './state';
 import './styles.css';
 
 export async function mountPopup(root: HTMLElement): Promise<void> {
@@ -11,6 +11,9 @@ export async function mountPopup(root: HTMLElement): Promise<void> {
   try {
     const state = await requestPopupState();
     renderPopup(root, state);
+    void activateAudioSupport().catch((error) => {
+      console.warn('Audio activation failed', error);
+    });
   } catch (error) {
     console.error('Failed to load popup state', error);
     renderError(root, fallbackMessages, fallbackLocale);

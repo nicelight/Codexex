@@ -74,3 +74,6 @@
 6. **AC6 - Toolbar badge reflects aggregated workload**
    - Given the aggregator reports totalActiveCount = n, when the action indicator updates, then the badge text shows min(n, 99+) and the text color follows spec/action-indicator.md while the background stays transparent.
    - When totalActiveCount changes, badge updates land within 250 ms and no chrome.action errors are logged.
+7. **AC7 - Audio cue on task completion**
+   - Given aggregated totalActiveCount transitions from >0 to 0, when the audio controller is activated, then a single chime is scheduled via Web Audio API (AudioContext running, no duplicate plays within the same transition).
+   - Given AudioContext activation fails, the system logs a warning and suppresses repeated retries until next activation attempt.

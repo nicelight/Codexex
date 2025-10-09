@@ -126,7 +126,7 @@ export class ContentScriptRuntime {
       const result = await chrome.storage.session.get({ [VERBOSE_KEY]: false });
       return Boolean(result[VERBOSE_KEY]);
     } catch (error) {
-      console.warn('verbose flag read failed', error);
+      this.logger.debug('verbose flag read failed', error);
       return false;
     }
   }

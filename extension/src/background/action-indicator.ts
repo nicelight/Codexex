@@ -12,12 +12,14 @@ import type { BackgroundAggregator } from './aggregator';
 
 const BADGE_BACKGROUND: chrome.action.ColorArray = [0, 0, 0, 0];
 const UPDATE_THROTTLE_MS = 200;
-const MAX_DISPLAYABLE_COUNT = 99;
+const MAX_DISPLAYABLE_COUNT = 9;
+const ICON_SIZES = [16, 24, 32] as const;
+const ICON_FONT_RATIO = 0.92;
 
-type BadgeVisual = {
+interface BadgeVisual {
   readonly text: string;
   readonly color: string;
-};
+}
 
 const COLOR_SCALE: ReadonlyArray<{ readonly threshold: number; readonly color: string }> = [
   { threshold: 0, color: '#16A34A' },
@@ -62,8 +64,11 @@ export function initializeActionIndicator(
   let disposed = false;
   const locale = resolveLocale(chrome);
   const tooltipFormatter = TOOLTIP_BY_LOCALE[locale] ?? TOOLTIP_BY_LOCALE.en;
+  const canRenderIcons = hasIconRenderingSupport();
 
-  void ensureBaseIcon(actionApi, logger);
+  if (!canRenderIcons) {
+    logger.debug('OffscreenCanvas/ImageData unavailable; falling back to badge text');
+  }
 
   const applyState = throttle(async (state: AggregatedTabsState) => {
     if (disposed) {
@@ -71,12 +76,18 @@ export function initializeActionIndicator(
     }
     const visual = deriveBadgeVisual(state.lastTotal ?? 0);
     await safeCall(() => actionApi.setBadgeBackgroundColor({ color: BADGE_BACKGROUND }));
-    await safeCall(() => actionApi.setBadgeText({ text: visual.text }));
-    if (actionApi.setBadgeTextColor) {
-      await safeCall(() => actionApi.setBadgeTextColor({ color: visual.color }));
-    }
+    await safeCall(() => actionApi.setBadgeText({ text: '' }));
     if (actionApi.setTitle) {
       await safeCall(() => actionApi.setTitle({ title: tooltipFormatter(visual.text) }));
+    }
+    if (canRenderIcons && actionApi.setIcon) {
+      const iconSet = createTextIconSet(visual.text, visual.color, logger);
+      if (iconSet) {
+        await safeCall(() => actionApi.setIcon({ imageData: iconSet }));
+      }
+    } else if (actionApi.setBadgeTextColor) {
+      await safeCall(() => actionApi.setBadgeTextColor({ color: visual.color }));
+      await safeCall(() => actionApi.setBadgeText({ text: visual.text }));
     }
   }, UPDATE_THROTTLE_MS);
 
@@ -110,7 +121,7 @@ export function initializeActionIndicator(
 
 export function deriveBadgeVisual(total: number): BadgeVisual {
   const safeTotal = Number.isFinite(total) ? Math.max(0, Math.trunc(total)) : 0;
-  const text = safeTotal > MAX_DISPLAYABLE_COUNT ? `${MAX_DISPLAYABLE_COUNT}+` : String(safeTotal);
+  const text = safeTotal > MAX_DISPLAYABLE_COUNT ? String(MAX_DISPLAYABLE_COUNT) : String(safeTotal);
   const color = selectColor(safeTotal);
   return { text, color };
 }
@@ -125,23 +136,52 @@ function selectColor(total: number): string {
   return COLOR_SCALE[0].color;
 }
 
-async function ensureBaseIcon(actionApi: typeof chrome.action, logger: ChromeLogger): Promise<void> {
-  if (!actionApi.setIcon) {
-    return;
-  }
-  if (typeof ImageData === 'undefined') {
-    logger.debug('ImageData is not available; skipping transparent icon initialization');
-    return;
+function hasIconRenderingSupport(): boolean {
+  return typeof OffscreenCanvas !== 'undefined' && typeof ImageData !== 'undefined';
+}
+
+function createTextIconSet(
+  text: string,
+  color: string,
+  logger: ChromeLogger,
+): Record<number, ImageData> | undefined {
+  if (!hasIconRenderingSupport()) {
+    return undefined;
   }
   try {
-    const imageData = createTransparentIconSet([16, 24, 32]);
-    await actionApi.setIcon({ imageData });
+    const entries: Record<number, ImageData> = {};
+    for (const size of ICON_SIZES) {
+      entries[size] = createTextImageData(size, text, color);
+    }
+    return entries;
   } catch (error) {
-    logger.warn('failed to set transparent action icon', error);
+    logger.warn('failed to render text icon, falling back to transparent icon', error);
+    return createTransparentIconSet(ICON_SIZES);
   }
 }
 
-function createTransparentIconSet(sizes: number[]): Record<number, ImageData> {
+function createTextImageData(size: number, text: string, color: string): ImageData {
+  const canvas = new OffscreenCanvas(size, size);
+  const context = canvas.getContext('2d');
+  if (!context) {
+    throw new Error('OffscreenCanvas context unavailable');
+  }
+  context.clearRect(0, 0, size, size);
+  context.fillStyle = color;
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  const fontSize = Math.floor(size * ICON_FONT_RATIO);
+  context.font = `900 ${fontSize}px "Inter","Segoe UI","Roboto",sans-serif`;
+  context.lineJoin = 'round';
+  const strokeWidth = Math.max(1, Math.floor(size * 0.08));
+  context.strokeStyle = 'rgba(0,0,0,0.08)';
+  context.lineWidth = strokeWidth;
+  context.strokeText(text, size / 2, size / 2);
+  context.fillText(text, size / 2, size / 2);
+  return context.getImageData(0, 0, size, size);
+}
+
+function createTransparentIconSet(sizes: readonly number[]): Record<number, ImageData> {
   const entries: Record<number, ImageData> = {};
   for (const size of sizes) {
     entries[size] = createTransparentImageData(size);

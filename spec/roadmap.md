@@ -155,3 +155,6 @@
 - [ ] Toolbar action indicator (v0.1.x)
   - [ ] Implement chrome.action badge/controller per spec/action-indicator.md.
   - [ ] Update popup/manual documentation after verifying UX.
+- [ ] Audio completion cue (v0.1.x)
+  - [ ] Реализовать Web Audio контроллер и сообщение POPUP_ACTIVATE_AUDIO.
+  - [ ] Добавить описания/мануал (docs) и покрыть тестами переход >0 -> 0.

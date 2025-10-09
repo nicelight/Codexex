@@ -81,3 +81,12 @@
   3. Operator glances at the toolbar badge and sees the current count and severity color.
 - **Alternatives:** If chrome.action APIs are unavailable, the indicator logs a warning and keeps previous badge value.
 - **Postconditions:** Badge reflects the newest aggregated count; tooltip matches the localized template.
+## UC-7: Звуковой сигнал завершения задач
+- **Actors:** Background service worker, Popup (для активации), пользователь.
+- **Предусловия:** Пользователь открыл popup хотя бы один раз, AudioContext активирован.
+- **Основной поток:**
+  1. Aggregator фиксирует lastTotal >0.
+  2. После очередного TASKS_UPDATE lastTotal становится  .
+  3. Audio notifier воспроизводит короткий сигнал (mp3 или fallback Web Audio).
+- **Альтернативы:** Если AudioContext неактивен, событие помечается как pending до следующей активации.
+- **Постусловия:** Пользователь получает звуковое уведомление единожды для перехода >0 -> 0.
