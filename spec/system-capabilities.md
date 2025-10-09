@@ -62,3 +62,8 @@
 3. Если вкладки отсутствуют (`tabs` пуст), уведомления не создаются, popup показывает пустое состояние.
 4. При длительном бездействии сервис-воркер может быть выгружен; alarm гарантирует его периодический запуск, проверяет `tabs[].heartbeat.status` и инициирует `PING`/повторное сканирование, если heartbeat устарел.
 5. Пользователь взаимодействует с уведомлением или popup без влияния на счётчики задач; открытие popup отображает актуальный снимок и не инициирует дополнительные сообщения, если фон уже получил свежие heartbeat/updates.
+## CAP-08: Toolbar action indicator
+- Toolbar badge renders aggregated totalActiveCount using chrome.action APIs.
+- Badge text stays on transparent background (RGBA [0,0,0,0]) and the base icon is replaced with transparent squares (16/24/32 px).
+- Text palette by load: 0 #16A34A, 1 #F97316, 2 #F2542D, 3 #E11D48, 4+ #C2185B.
+- Badge text caps at 99+; tooltip follows locale template "{n} active Codex tasks"

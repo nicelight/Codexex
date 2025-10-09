@@ -152,3 +152,6 @@
   - [ ] Настроить отдельный таймаут антидребезга для D3 (инициируется только при новых сигналах), синхронизировать с 500 мс задержкой контент-скрипта и 12–15 сек в background.
   - [ ] Добавить интеграционные тесты, эмулирующие переключение между D1/D2 и D3, чтобы подтвердить плавную деградацию.
   - [ ] Обновить документацию `spec/test-plan.md` ссылкой на новые сценарии и критерии готовности D3.
+- [ ] Toolbar action indicator (v0.1.x)
+  - [ ] Implement chrome.action badge/controller per spec/action-indicator.md.
+  - [ ] Update popup/manual documentation after verifying UX.

@@ -72,3 +72,12 @@
 - **Ошибки:**
   - Контент-скрипт не отвечает на `PING` → background повторяет попытку на следующем alarm и логирует предупреждение для диагностики.
 - **Постусловия:** `lastSeenAt` отражает реальное время последнего контакта; если вкладка не восстановилась, background продолжает помечать её как `STALE` и не учитывает устаревшие данные при расчёте уведомлений.
+## UC-6: Monitoring Codex tasks from the toolbar badge
+- **Actors:** Background worker, Chrome toolbar, Codex operator.
+- **Preconditions:** Aggregator is active; extension action is pinned in the toolbar.
+- **Main Flow:**
+  1. Aggregator receives TASKS_UPDATE and updates lastTotal.
+  2. Action indicator derives badge text/color and updates chrome.action APIs.
+  3. Operator glances at the toolbar badge and sees the current count and severity color.
+- **Alternatives:** If chrome.action APIs are unavailable, the indicator logs a warning and keeps previous badge value.
+- **Postconditions:** Badge reflects the newest aggregated count; tooltip matches the localized template.

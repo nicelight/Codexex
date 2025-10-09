@@ -91,6 +91,13 @@ export interface ChromeLike {
     clear: typeof chrome.notifications.clear;
     update: typeof chrome.notifications.update;
   };
+  action?: {
+    setBadgeBackgroundColor: typeof chrome.action.setBadgeBackgroundColor;
+    setBadgeText: typeof chrome.action.setBadgeText;
+    setBadgeTextColor?: typeof chrome.action.setBadgeTextColor;
+    setIcon?: typeof chrome.action.setIcon;
+    setTitle?: typeof chrome.action.setTitle;
+  };
   scripting?: {
     executeScript: typeof chrome.scripting.executeScript;
   };
@@ -258,6 +265,7 @@ function mergeChromeLike(base: ChromeMock, overrides?: Partial<ChromeLike>): Chr
     tabs: { ...base.tabs, ...overrides.tabs },
     alarms: { ...base.alarms, ...overrides.alarms },
     notifications: { ...base.notifications, ...overrides.notifications },
+    action: base.action || overrides.action ? { ...base.action, ...overrides.action } : base.action,
     scripting: overrides.scripting ?? base.scripting,
     i18n: overrides.i18n ?? base.i18n,
   };
@@ -359,6 +367,13 @@ export function createMockChrome(overrides?: Partial<ChromeLike>): ChromeMock {
       create: withSpy((async (id: string | undefined) => id ?? 'mock-notification') as typeof chrome.notifications.create),
       clear: withSpy((async () => true) as typeof chrome.notifications.clear),
       update: withSpy((async () => true) as typeof chrome.notifications.update),
+    },
+    action: {
+      setBadgeBackgroundColor: withSpy((async () => undefined) as typeof chrome.action.setBadgeBackgroundColor),
+      setBadgeText: withSpy((async () => undefined) as typeof chrome.action.setBadgeText),
+      setBadgeTextColor: withSpy((async () => undefined) as typeof chrome.action.setBadgeTextColor),
+      setIcon: withSpy((async () => undefined) as typeof chrome.action.setIcon),
+      setTitle: withSpy((async () => undefined) as typeof chrome.action.setTitle),
     },
     scripting: {
       executeScript: (async () => []) as typeof chrome.scripting.executeScript,

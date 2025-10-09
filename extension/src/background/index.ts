@@ -10,6 +10,7 @@ import {
   type ChromeLogger,
 } from '../shared/chrome';
 import { initializeAggregator, type BackgroundAggregator } from './aggregator';
+import { initializeActionIndicator } from './action-indicator';
 import { generatePopupRenderState } from './popup-state';
 import { registerAlarms } from './alarms';
 import { initializeNotifications } from './notifications';
@@ -21,6 +22,7 @@ const { logger: rootLogger } = createVerbosityAwareLogger(chrome);
 const aggregator = initializeAggregator({ chrome, logger: rootLogger });
 
 initializeNotifications(aggregator, { chrome, logger: rootLogger });
+initializeActionIndicator(aggregator, { chrome, logger: rootLogger });
 registerAlarms(aggregator, { chrome, logger: rootLogger });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {

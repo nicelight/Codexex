@@ -74,3 +74,7 @@
 - Реализованы UI/опции для редактирования настроек `CodexTasksUserSettings`.
 - Background синхронизирует и валидирует настройки, применяет `autoDiscardableOff`, `debounceMs`, `sound`, `showBadgeCount` ко всем открытым вкладкам.
 - Покрытие тестами сценариев изменения настроек и их влияния на уведомления, бейдж и autoDiscardable.
+### Action indicator rollout (v0.1.x)
+- Extend background bootstrap with action badge controller (see spec/action-indicator.md).
+- Derive badge text/color from AggregatedState.lastTotal; throttle updates to <=4 Hz.
+- Ensure controller exposes pure helpers for unit tests and degrades gracefully when chrome.action is missing.

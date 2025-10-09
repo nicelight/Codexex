@@ -71,3 +71,6 @@
 ## Риски и mitigations
 - Изменение DOM на стороне Codex → предусмотреть возможность обновления фикстур DOM.
 - Ограничения Manifest V3 (спящий воркер) → интеграционные тесты моделируют таймеры `chrome.alarms`.
+6. **AC6 - Toolbar badge reflects aggregated workload**
+   - Given the aggregator reports totalActiveCount = n, when the action indicator updates, then the badge text shows min(n, 99+) and the text color follows spec/action-indicator.md while the background stays transparent.
+   - When totalActiveCount changes, badge updates land within 250 ms and no chrome.action errors are logged.
