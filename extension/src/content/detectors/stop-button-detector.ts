@@ -3,8 +3,8 @@ import { elementEvidence, logDetectorResult } from './helpers';
 import type { Detector, DetectorContext, DetectorScanResult } from './types';
 
 const STOP_TEXTS = {
-  en: ['stop', 'stop run', 'cancel run'],
-  ru: ['остановить', 'прервать'],
+  en: ['stop', 'stop run', 'cancel', 'cancel run', 'cancel task'],
+  ru: ['остановить', 'прервать', 'отменить', 'отменить задачу'],
 } as const;
 
 const STOP_SELECTORS = ['button', '[role="button"]', 'a[href]'] as const;
