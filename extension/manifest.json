@@ -26,5 +26,14 @@
       "run_at": "document_idle"
     }
   ],
+  "web_accessible_resources": [
+    {
+      "resources": ["src/content.main.js"],
+      "matches": [
+        "https://*.openai.com/*",
+        "https://*.chatgpt.com/*"
+      ]
+    }
+  ],
   "minimum_chrome_version": "120"
 }
