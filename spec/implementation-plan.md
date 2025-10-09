@@ -41,24 +41,24 @@
    - Модуль `notifications` контролирует антидребезг, создаёт уведомления.
    - Модуль `alarms` управляет `chrome.alarms`, пингует вкладки и переводит heartbeat в `STALE`, если нет свежих сигналов.
    - Хендлер `tabs.onRemoved` поддерживает консистентность состояния.
-   - (v0.2.0+) Модуль `settings` валидирует объект по `contracts/settings.schema.json`, синхронизирует `chrome.storage.sync`, применяет `debounceMs`, `autoDiscardableOff`, `sound`, `showBadgeCount`.
+   - (v0.2.0+) Подготовить модуль `settings`, который будет валидировать объект по `contracts/settings.schema.json` и синхронизировать `chrome.storage.sync`; в v0.1.0 значения остаются жёстко заданными и код не использует `storage.sync`.
 4. **Popup**
-   - Простое отображение списка вкладок: использование HTMX/VanillaJS + шаблонов.
-   - Запрос состояния через messaging (адаптер реализует вызов `/popup/state`).
+   - Простое отображение списка вкладок: Vanilla JS с ручным построением DOM-дерева.
+   - Запрос состояния через messaging (`POPUP_GET_STATE` → генерация `PopupRenderState`).
 5. **Инфраструктура**
    - Настроить сборку через `vite` (target: chrome >= 120, manifest v3).
    - Добавить скрипты `npm run build`, `npm run test:unit`, `npm run test:contract`, `npm run test:integration`.
    - Подготовить `manifest.json` с минимальными разрешениями.
 6. **Тесты**
    - Unit: jest/vitest с jsdom, мок Chrome API.
-   - Contract: `schemathesis` против `contracts/openapi.yaml`.
-   - Integration: сквозные сценарии UC-1..UC-4 (использовать fake timers, симулировать сообщения).
+   - Contract: проверки JSON Schema через `ajv`/Vitest (DTO, агрегированное состояние, `PopupRenderState`).
+   - Integration: сквозные сценарии UC-1..UC-5 (использовать fake timers, симулировать сообщения и alarm `codex-poll`).
 
 ## Зависимости и инструменты
 - `vite` + `typescript` для сборки.
 - `webextension-polyfill` (опционально) для унифицированного API.
 - `ajv` для runtime-валидации схем (dev).
-- Тесты и инфраструктура: `vitest`, локальный плагин `codex-manifest-copy` для сборки MV3, `msw` для HTTP-адаптера.
+- Тесты и инфраструктура: `vitest`, локальный плагин `codex-manifest-copy` для сборки MV3, кастомные моки Chrome API.
 
 ## Риск-менеджмент
 - **Изменение DOM** → конфигурируемые селекторы, unit-тесты на фикстурах.
