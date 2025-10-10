@@ -16,7 +16,8 @@ export type OutgoingContentMessage =
 export type BackgroundEvent =
   | { type: 'PING' }
   | { type: 'RESET' }
-  | { type: 'REQUEST_STATE' };
+  | { type: 'REQUEST_STATE' }
+  | { type: 'AUDIO_CHIME' };
 
 export type BackgroundEventHandler = (
   event: BackgroundEvent,
@@ -54,7 +55,7 @@ function parseBackgroundEvent(message: unknown): BackgroundEvent | undefined {
     return undefined;
   }
   const { type } = message as { type?: unknown };
-  if (type === 'PING' || type === 'RESET' || type === 'REQUEST_STATE') {
+  if (type === 'PING' || type === 'RESET' || type === 'REQUEST_STATE' || type === 'AUDIO_CHIME') {
     return { type } as BackgroundEvent;
   }
   return undefined;

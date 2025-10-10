@@ -11,7 +11,7 @@ import {
 } from '../shared/chrome';
 import { initializeAggregator, type BackgroundAggregator } from './aggregator';
 import { initializeActionIndicator } from './action-indicator';
-import { initializeAudioNotifier } from './audio';
+import { initializeAudioTrigger } from './audio-trigger';
 import { generatePopupRenderState } from './popup-state';
 import { registerAlarms } from './alarms';
 import { initializeNotifications } from './notifications';
@@ -24,7 +24,7 @@ const aggregator = initializeAggregator({ chrome, logger: rootLogger });
 
 initializeNotifications(aggregator, { chrome, logger: rootLogger });
 initializeActionIndicator(aggregator, { chrome, logger: rootLogger });
-const audioNotifier = initializeAudioNotifier(aggregator, { chrome, logger: rootLogger });
+initializeAudioTrigger(aggregator, { chrome, logger: rootLogger });
 registerAlarms(aggregator, { chrome, logger: rootLogger });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -87,10 +87,6 @@ export async function handleRuntimeMessage(
     const state = await generatePopupRenderState(aggregatorRef);
     logger.debug('popup state generated', { totalActive: state.totalActive });
     return state;
-  }
-  if (type === 'POPUP_ACTIVATE_AUDIO') {
-    await audioNotifier.activate();
-    return { ok: true };
   }
   logger.debug('unknown message type ignored', { type });
   return undefined;

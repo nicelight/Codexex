@@ -14,6 +14,7 @@ import {
 import { ActivityScanner, type TaskActivitySnapshot } from './activity-scanner';
 import { createDetectorPipeline } from './detectors';
 import { onBackgroundEvent, postToBackground } from './messaging';
+import { ContentAudioController } from './audio';
 
 const ZERO_DEBOUNCE_MS = 500;
 const HEARTBEAT_INTERVAL_MS = 15_000;
@@ -30,6 +31,7 @@ export class ContentScriptRuntime {
   private readonly verboseLogger: ChromeLogger;
   private readonly scanner: ActivityScanner;
   private readonly mutationObserver: MutationObserver;
+  private readonly audioController: ContentAudioController;
 
   private zeroTimer: ReturnType<typeof setTimeout> | undefined;
   private heartbeatTimer: ReturnType<typeof setTimeout> | undefined;
@@ -57,6 +59,10 @@ export class ContentScriptRuntime {
     this.mutationObserver = new MutationObserver(() => {
       this.logger.debug('mutation observed');
       this.scheduleScan('mutation');
+    });
+    this.audioController = new ContentAudioController({
+      window: this.window,
+      logger: this.verboseLogger,
     });
   }
 
@@ -260,6 +266,9 @@ export class ContentScriptRuntime {
         } else {
           await this.scanNow('manual');
         }
+        break;
+      case 'AUDIO_CHIME':
+        await this.audioController.handleChimeRequest();
         break;
       default:
         break;

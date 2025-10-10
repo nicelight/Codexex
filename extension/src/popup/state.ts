@@ -26,21 +26,3 @@ export async function requestPopupState(): Promise<PopupRenderState> {
     }
   });
 }
-
-export async function activateAudioSupport(): Promise<void> {
-  const chrome = resolveChrome();
-  return new Promise<void>((resolve, reject) => {
-    try {
-      chrome.runtime.sendMessage({ type: 'POPUP_ACTIVATE_AUDIO' }, () => {
-        const lastError = chrome.runtime.lastError;
-        if (lastError) {
-          reject(new Error(lastError.message));
-          return;
-        }
-        resolve();
-      });
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
