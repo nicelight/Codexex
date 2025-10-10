@@ -47,7 +47,7 @@ flowchart LR
 
 ## Быстрый старт
 ### Либо скачать вручную
-1. [Забираем архив из Релизов(]https://github.com/nicelight/Codexex/releases/tag/v0.1.0)
+1. [Забираем архив из Релизов](https://github.com/nicelight/Codexex/releases/tag/v0.1.0)
 2. Распаковываем и добавляем в расширения Хрома.
 3. 
 ### Либо клон репозитория 
