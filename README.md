@@ -6,6 +6,11 @@
 Расширение показывает сколько тасок активно на данный момент. Можно воспроизвети тын-дын когда все таски выполнены. 
 
 
+[![logo](https://img.shields.io/badge/Codex-Tasks%20Watcher-8A2BE2?style=for-the-badge&logo=google-chrome&logoColor=white)](https://github.com/<owner>/<repo>/releases)
+[![mv3](https://img.shields.io/badge/Manifest-V3-2E8B57?style=for-the-badge)](./docs/manifest-notes.md)
+[![privacy](https://img.shields.io/badge/Privacy-Local%20Only-1E90FF?style=for-the-badge)](./docs/PRIVACY.md)
+
+
 
 <p align="center">
   <a href="https://github.com/nicelight/Codexex/releases/tag/v0.1.0">
