@@ -17,7 +17,9 @@ export type BackgroundEvent =
   | { type: 'PING' }
   | { type: 'RESET' }
   | { type: 'REQUEST_STATE' }
-  | { type: 'AUDIO_CHIME' };
+  | { type: 'AUDIO_CHIME' }
+  | { type: 'AUDIO_PREVIEW'; volume?: number }
+  | { type: 'AUDIO_SETTINGS_UPDATE'; sound?: boolean; soundVolume?: number };
 
 export type BackgroundEventHandler = (
   event: BackgroundEvent,
@@ -57,6 +59,18 @@ function parseBackgroundEvent(message: unknown): BackgroundEvent | undefined {
   const { type } = message as { type?: unknown };
   if (type === 'PING' || type === 'RESET' || type === 'REQUEST_STATE' || type === 'AUDIO_CHIME') {
     return { type } as BackgroundEvent;
+  }
+  if (type === 'AUDIO_PREVIEW') {
+    const { volume } = message as { volume?: unknown };
+    return { type: 'AUDIO_PREVIEW', volume: typeof volume === 'number' ? volume : undefined };
+  }
+  if (type === 'AUDIO_SETTINGS_UPDATE') {
+    const { sound, soundVolume } = message as { sound?: unknown; soundVolume?: unknown };
+    return {
+      type: 'AUDIO_SETTINGS_UPDATE',
+      ...(typeof sound === 'boolean' ? { sound } : {}),
+      ...(typeof soundVolume === 'number' ? { soundVolume } : {}),
+    };
   }
   return undefined;
 }
