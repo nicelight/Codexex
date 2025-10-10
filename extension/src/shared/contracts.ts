@@ -82,6 +82,7 @@ export interface PopupRenderState {
 export interface CodexTasksUserSettings {
   "debounceMs"?: number;
   "sound"?: boolean;
+  "soundVolume"?: number;
   "autoDiscardableOff"?: boolean;
   "showBadgeCount"?: boolean;
 }
@@ -330,7 +331,7 @@ export const codexTasksUserSettingsSchema = {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://codex.tasks/contracts/settings.schema.json",
   "title": "CodexTasksUserSettings",
-  "description": "Пользовательские настройки расширения, синхронизируемые через chrome.storage.sync (v0.2.0+)",
+  "description": "���������������� ��������� ����������, ���������������� ����� chrome.storage.sync",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -339,22 +340,29 @@ export const codexTasksUserSettingsSchema = {
       "minimum": 0,
       "maximum": 60000,
       "default": 12000,
-      "description": "Продолжительность окна антидребезга в миллисекундах"
+      "description": "����������������� ���� ������������ � �������������"
     },
     "sound": {
       "type": "boolean",
-      "default": false,
-      "description": "Воспроизводить ли звуковое уведомление при завершении задач"
+      "default": true,
+      "description": "�������������� �������� ����������� ��� ���������� �����"
+    },
+    "soundVolume": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "default": 0.2,
+      "description": "��������� ��������� ����������� (0..1)"
     },
     "autoDiscardableOff": {
       "type": "boolean",
       "default": true,
-      "description": "Отключает авто-выгрузку вкладок Codex через chrome.tabs.update({ autoDiscardable: false })"
+      "description": "��������� ����-�������� ������� Codex ����� chrome.tabs.update({ autoDiscardable: false })"
     },
     "showBadgeCount": {
       "type": "boolean",
       "default": true,
-      "description": "Отображать ли количество активных задач на бейдже иконки расширения"
+      "description": "���������� �� ���������� �������� ����� �� ������ ������ ����������"
     }
   }
 } as const;
@@ -571,7 +579,7 @@ export function assertPopupRenderState(value: unknown): asserts value is PopupRe
 }
 
 const validateCodexTasksUserSettingsFn: ValidateFunction<CodexTasksUserSettings> = (() => {
-  const schema37 = {"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://codex.tasks/contracts/settings.schema.json","title":"CodexTasksUserSettings","description":"Пользовательские настройки расширения, синхронизируемые через chrome.storage.sync (v0.2.0+)","type":"object","additionalProperties":false,"properties":{"debounceMs":{"type":"integer","minimum":0,"maximum":60000,"default":12000,"description":"Продолжительность окна антидребезга в миллисекундах"},"sound":{"type":"boolean","default":false,"description":"Воспроизводить ли звуковое уведомление при завершении задач"},"autoDiscardableOff":{"type":"boolean","default":true,"description":"Отключает авто-выгрузку вкладок Codex через chrome.tabs.update({ autoDiscardable: false })"},"showBadgeCount":{"type":"boolean","default":true,"description":"Отображать ли количество активных задач на бейдже иконки расширения"}}};function validate25(data, {instancePath="", parentData, parentDataProperty, rootData=data, dynamicAnchors={}}={}){/*# sourceURL="https://codex.tasks/contracts/settings.schema.json" */;let vErrors = null;let errors = 0;const evaluated0 = validate25.evaluated;if(evaluated0.dynamicProps){evaluated0.props = undefined;}if(evaluated0.dynamicItems){evaluated0.items = undefined;}if(data && typeof data == "object" && !Array.isArray(data)){for(const key0 in data){if(!((((key0 === "debounceMs") || (key0 === "sound")) || (key0 === "autoDiscardableOff")) || (key0 === "showBadgeCount"))){const err0 = {instancePath,schemaPath:"#/additionalProperties",keyword:"additionalProperties",params:{additionalProperty: key0},message:"must NOT have additional properties"};if(vErrors === null){vErrors = [err0];}else {vErrors.push(err0);}errors++;}}if(data.debounceMs !== undefined){let data0 = data.debounceMs;if(!(((typeof data0 == "number") && (!(data0 % 1) && !isNaN(data0))) && (isFinite(data0)))){const err1 = {instancePath:instancePath+"/debounceMs",schemaPath:"#/properties/debounceMs/type",keyword:"type",params:{type: "integer"},message:"must be integer"};if(vErrors === null){vErrors = [err1];}else {vErrors.push(err1);}errors++;}if((typeof data0 == "number") && (isFinite(data0))){if(data0 > 60000 || isNaN(data0)){const err2 = {instancePath:instancePath+"/debounceMs",schemaPath:"#/properties/debounceMs/maximum",keyword:"maximum",params:{comparison: "<=", limit: 60000},message:"must be <= 60000"};if(vErrors === null){vErrors = [err2];}else {vErrors.push(err2);}errors++;}if(data0 < 0 || isNaN(data0)){const err3 = {instancePath:instancePath+"/debounceMs",schemaPath:"#/properties/debounceMs/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"};if(vErrors === null){vErrors = [err3];}else {vErrors.push(err3);}errors++;}}}if(data.sound !== undefined){if(typeof data.sound !== "boolean"){const err4 = {instancePath:instancePath+"/sound",schemaPath:"#/properties/sound/type",keyword:"type",params:{type: "boolean"},message:"must be boolean"};if(vErrors === null){vErrors = [err4];}else {vErrors.push(err4);}errors++;}}if(data.autoDiscardableOff !== undefined){if(typeof data.autoDiscardableOff !== "boolean"){const err5 = {instancePath:instancePath+"/autoDiscardableOff",schemaPath:"#/properties/autoDiscardableOff/type",keyword:"type",params:{type: "boolean"},message:"must be boolean"};if(vErrors === null){vErrors = [err5];}else {vErrors.push(err5);}errors++;}}if(data.showBadgeCount !== undefined){if(typeof data.showBadgeCount !== "boolean"){const err6 = {instancePath:instancePath+"/showBadgeCount",schemaPath:"#/properties/showBadgeCount/type",keyword:"type",params:{type: "boolean"},message:"must be boolean"};if(vErrors === null){vErrors = [err6];}else {vErrors.push(err6);}errors++;}}}else {const err7 = {instancePath,schemaPath:"#/type",keyword:"type",params:{type: "object"},message:"must be object"};if(vErrors === null){vErrors = [err7];}else {vErrors.push(err7);}errors++;}validate25.errors = vErrors;return errors === 0;}validate25.evaluated = {"props":true,"dynamicProps":false,"dynamicItems":false};
+  const schema37 = {"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://codex.tasks/contracts/settings.schema.json","title":"CodexTasksUserSettings","description":"���������������� ��������� ����������, ���������������� ����� chrome.storage.sync","type":"object","additionalProperties":false,"properties":{"debounceMs":{"type":"integer","minimum":0,"maximum":60000,"default":12000,"description":"����������������� ���� ������������ � �������������"},"sound":{"type":"boolean","default":true,"description":"�������������� �������� ����������� ��� ���������� �����"},"soundVolume":{"type":"number","minimum":0,"maximum":1,"default":0.2,"description":"��������� ��������� ����������� (0..1)"},"autoDiscardableOff":{"type":"boolean","default":true,"description":"��������� ����-�������� ������� Codex ����� chrome.tabs.update({ autoDiscardable: false })"},"showBadgeCount":{"type":"boolean","default":true,"description":"���������� �� ���������� �������� ����� �� ������ ������ ����������"}}};function validate25(data, {instancePath="", parentData, parentDataProperty, rootData=data, dynamicAnchors={}}={}){/*# sourceURL="https://codex.tasks/contracts/settings.schema.json" */;let vErrors = null;let errors = 0;const evaluated0 = validate25.evaluated;if(evaluated0.dynamicProps){evaluated0.props = undefined;}if(evaluated0.dynamicItems){evaluated0.items = undefined;}if(data && typeof data == "object" && !Array.isArray(data)){for(const key0 in data){if(!(((((key0 === "debounceMs") || (key0 === "sound")) || (key0 === "soundVolume")) || (key0 === "autoDiscardableOff")) || (key0 === "showBadgeCount"))){const err0 = {instancePath,schemaPath:"#/additionalProperties",keyword:"additionalProperties",params:{additionalProperty: key0},message:"must NOT have additional properties"};if(vErrors === null){vErrors = [err0];}else {vErrors.push(err0);}errors++;}}if(data.debounceMs !== undefined){let data0 = data.debounceMs;if(!(((typeof data0 == "number") && (!(data0 % 1) && !isNaN(data0))) && (isFinite(data0)))){const err1 = {instancePath:instancePath+"/debounceMs",schemaPath:"#/properties/debounceMs/type",keyword:"type",params:{type: "integer"},message:"must be integer"};if(vErrors === null){vErrors = [err1];}else {vErrors.push(err1);}errors++;}if((typeof data0 == "number") && (isFinite(data0))){if(data0 > 60000 || isNaN(data0)){const err2 = {instancePath:instancePath+"/debounceMs",schemaPath:"#/properties/debounceMs/maximum",keyword:"maximum",params:{comparison: "<=", limit: 60000},message:"must be <= 60000"};if(vErrors === null){vErrors = [err2];}else {vErrors.push(err2);}errors++;}if(data0 < 0 || isNaN(data0)){const err3 = {instancePath:instancePath+"/debounceMs",schemaPath:"#/properties/debounceMs/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"};if(vErrors === null){vErrors = [err3];}else {vErrors.push(err3);}errors++;}}}if(data.sound !== undefined){if(typeof data.sound !== "boolean"){const err4 = {instancePath:instancePath+"/sound",schemaPath:"#/properties/sound/type",keyword:"type",params:{type: "boolean"},message:"must be boolean"};if(vErrors === null){vErrors = [err4];}else {vErrors.push(err4);}errors++;}}if(data.soundVolume !== undefined){let data2 = data.soundVolume;if((typeof data2 == "number") && (isFinite(data2))){if(data2 > 1 || isNaN(data2)){const err5 = {instancePath:instancePath+"/soundVolume",schemaPath:"#/properties/soundVolume/maximum",keyword:"maximum",params:{comparison: "<=", limit: 1},message:"must be <= 1"};if(vErrors === null){vErrors = [err5];}else {vErrors.push(err5);}errors++;}if(data2 < 0 || isNaN(data2)){const err6 = {instancePath:instancePath+"/soundVolume",schemaPath:"#/properties/soundVolume/minimum",keyword:"minimum",params:{comparison: ">=", limit: 0},message:"must be >= 0"};if(vErrors === null){vErrors = [err6];}else {vErrors.push(err6);}errors++;}}else {const err7 = {instancePath:instancePath+"/soundVolume",schemaPath:"#/properties/soundVolume/type",keyword:"type",params:{type: "number"},message:"must be number"};if(vErrors === null){vErrors = [err7];}else {vErrors.push(err7);}errors++;}}if(data.autoDiscardableOff !== undefined){if(typeof data.autoDiscardableOff !== "boolean"){const err8 = {instancePath:instancePath+"/autoDiscardableOff",schemaPath:"#/properties/autoDiscardableOff/type",keyword:"type",params:{type: "boolean"},message:"must be boolean"};if(vErrors === null){vErrors = [err8];}else {vErrors.push(err8);}errors++;}}if(data.showBadgeCount !== undefined){if(typeof data.showBadgeCount !== "boolean"){const err9 = {instancePath:instancePath+"/showBadgeCount",schemaPath:"#/properties/showBadgeCount/type",keyword:"type",params:{type: "boolean"},message:"must be boolean"};if(vErrors === null){vErrors = [err9];}else {vErrors.push(err9);}errors++;}}}else {const err10 = {instancePath,schemaPath:"#/type",keyword:"type",params:{type: "object"},message:"must be object"};if(vErrors === null){vErrors = [err10];}else {vErrors.push(err10);}errors++;}validate25.errors = vErrors;return errors === 0;}validate25.evaluated = {"props":true,"dynamicProps":false,"dynamicItems":false};
   return validate25 as ValidateFunction<CodexTasksUserSettings>;
 })();
 

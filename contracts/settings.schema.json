@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://codex.tasks/contracts/settings.schema.json",
   "title": "CodexTasksUserSettings",
-  "description": "РџРѕР»СЊР·РѕРІР°С‚РµР»СЊСЃРєРёРµ РЅР°СЃС‚СЂРѕР№РєРё СЂР°СЃС€РёСЂРµРЅРёСЏ, СЃРёРЅС…СЂРѕРЅРёР·РёСЂСѓРµРјС‹Рµ С‡РµСЂРµР· chrome.storage.sync (v0.2.0+)",
+  "description": "Пользовательские настройки расширения, синхронизируемые через chrome.storage.sync",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -11,22 +11,30 @@
       "minimum": 0,
       "maximum": 60000,
       "default": 12000,
-      "description": "РџСЂРѕРґРѕР»Р¶РёС‚РµР»СЊРЅРѕСЃС‚СЊ РѕРєРЅР° Р°РЅС‚РёРґСЂРµР±РµР·РіР° РІ РјРёР»Р»РёСЃРµРєСѓРЅРґР°С…"
+      "description": "Продолжительность окна антидребезга в миллисекундах"
     },
     "sound": {
       "type": "boolean",
-      "default": false,
-      "description": "Р’РѕСЃРїСЂРѕРёР·РІРѕРґРёС‚СЊ Р»Рё Р·РІСѓРєРѕРІРѕРµ СѓРІРµРґРѕРјР»РµРЅРёРµ РїСЂРё Р·Р°РІРµСЂС€РµРЅРёРё Р·Р°РґР°С‡"
+      "default": true,
+      "description": "Воспроизводить звуковое уведомление при завершении задач"
+    },
+    "soundVolume": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "default": 0.2,
+      "description": "Громкость звукового уведомления (0..1)"
     },
     "autoDiscardableOff": {
       "type": "boolean",
       "default": true,
-      "description": "РћС‚РєР»СЋС‡Р°РµС‚ Р°РІС‚Рѕ-РІС‹РіСЂСѓР·РєСѓ РІРєР»Р°РґРѕРє Codex С‡РµСЂРµР· chrome.tabs.update({ autoDiscardable: false })"
+      "description": "Отключает авто-выгрузку вкладок Codex через chrome.tabs.update({ autoDiscardable: false })"
     },
     "showBadgeCount": {
       "type": "boolean",
       "default": true,
-      "description": "РћС‚РѕР±СЂР°Р¶Р°С‚СЊ Р»Рё РєРѕР»РёС‡РµСЃС‚РІРѕ Р°РєС‚РёРІРЅС‹С… Р·Р°РґР°С‡ РЅР° Р±РµР№РґР¶Рµ РёРєРѕРЅРєРё СЂР°СЃС€РёСЂРµРЅРёСЏ"
+      "description": "Отображать ли количество активных задач на бейдже иконки расширения"
     }
   }
 }
+
