@@ -63,6 +63,7 @@ export interface ChromeLike {
     connect: typeof chrome.runtime.connect;
     onMessage: ChromeEventLike<RuntimeMessageListener>;
     lastError?: chrome.runtime.LastError | undefined;
+    getURL?: typeof chrome.runtime.getURL;
   };
   storage: {
     session: Pick<typeof chrome.storage.session, 'get' | 'set' | 'remove' | 'clear'>;
@@ -308,6 +309,7 @@ export function createMockChrome(overrides?: Partial<ChromeLike>): ChromeMock {
       connect: withSpy((() => createPortMock()) as typeof chrome.runtime.connect),
       onMessage: runtimeOnMessage.event,
       lastError: undefined,
+      getURL: withSpy(((path: string) => path) as typeof chrome.runtime.getURL),
     },
     storage: {
       session: createInMemoryStorageArea('session', storageOnChanged),

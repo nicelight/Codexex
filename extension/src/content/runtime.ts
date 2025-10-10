@@ -268,7 +268,13 @@ export class ContentScriptRuntime {
         }
         break;
       case 'AUDIO_CHIME':
-        await this.audioController.handleChimeRequest();
+        await this.audioController.handleChimeRequest(event.volume);
+        break;
+      case 'AUDIO_SETTINGS_UPDATE':
+        this.audioController.applySettings({
+          sound: event.sound,
+          soundVolume: event.soundVolume,
+        });
         break;
       default:
         break;

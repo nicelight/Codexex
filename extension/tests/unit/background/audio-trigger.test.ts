@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi, type SpyInstance } from 'vitest';
 
 import { initializeAudioTrigger } from '../../../src/background/audio-trigger';
 import {
@@ -78,13 +78,50 @@ describe('audio trigger', () => {
     const aggregator = new StubAggregator();
     initializeAudioTrigger(aggregator, { chrome: chromeMock });
 
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(chromeMock.runtime.sendMessage).toHaveBeenCalledWith({
+      type: 'AUDIO_SETTINGS_UPDATE',
+      sound: true,
+      soundVolume: 0.2,
+    });
+
+    (chromeMock.runtime.sendMessage as SpyInstance).mockClear();
+    (chromeMock.tabs.sendMessage as SpyInstance).mockClear();
+
     aggregator.emitTotals(2, 0);
     await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(chromeMock.runtime.sendMessage).toHaveBeenCalledWith({ type: 'AUDIO_CHIME' });
-    expect(chromeMock.tabs.sendMessage).toHaveBeenCalledWith(101, { type: 'AUDIO_CHIME' });
-    expect(chromeMock.tabs.sendMessage).toHaveBeenCalledWith(202, { type: 'AUDIO_CHIME' });
+    expect(chromeMock.runtime.sendMessage).toHaveBeenCalledWith({ type: 'AUDIO_CHIME', volume: 0.2 });
+    expect(chromeMock.tabs.sendMessage).toHaveBeenCalledWith(101, { type: 'AUDIO_CHIME', volume: 0.2 });
+    expect(chromeMock.tabs.sendMessage).toHaveBeenCalledWith(202, { type: 'AUDIO_CHIME', volume: 0.2 });
+  });
+
+  test('does not broadcast chime when sound is disabled', async () => {
+    const aggregator = new StubAggregator();
+    initializeAudioTrigger(aggregator, { chrome: chromeMock });
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    await chromeMock.storage.sync?.set({ sound: false });
+
+    (chromeMock.runtime.sendMessage as SpyInstance).mockClear();
+    (chromeMock.tabs.sendMessage as SpyInstance).mockClear();
+
+    aggregator.emitTotals(1, 0);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(chromeMock.runtime.sendMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'AUDIO_CHIME' }),
+    );
+    expect(chromeMock.tabs.sendMessage).not.toHaveBeenCalledWith(
+      expect.any(Number),
+      expect.objectContaining({ type: 'AUDIO_CHIME' }),
+    );
   });
 });

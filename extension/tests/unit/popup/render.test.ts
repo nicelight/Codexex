@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach } from 'vitest';
 import { renderPopup } from '../../../src/popup/app';
 import { getDefaultPopupMessages } from '../../../src/popup/messages';
 import type { PopupRenderState } from '../../../src/shared/contracts';
+import { SETTINGS_DEFAULTS } from '../../../src/shared/settings';
 
 describe('popup rendering', () => {
   beforeEach(() => {
@@ -18,7 +19,7 @@ describe('popup rendering', () => {
       messages: getDefaultPopupMessages('ru'),
     };
 
-    renderPopup(root, state);
+    renderPopup(root, state, SETTINGS_DEFAULTS);
 
     expect(root.querySelector('.popup__empty')?.textContent).toBe('Нет активных задач');
     expect(document.documentElement.lang).toBe('ru');
@@ -55,7 +56,7 @@ describe('popup rendering', () => {
       ],
     };
 
-    renderPopup(root, state);
+    renderPopup(root, state, SETTINGS_DEFAULTS);
 
     const tabs = root.querySelectorAll('.popup__tab');
     expect(tabs).toHaveLength(2);

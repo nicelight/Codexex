@@ -5,9 +5,9 @@ import {
   resolveChrome,
   type ChromeLike,
   type ChromeLogger,
+  type StorageChangeListener,
 } from '../shared/chrome';
-
-const AUDIO_EVENT = { type: 'AUDIO_CHIME' as const };
+import { loadUserSettings, SETTINGS_DEFAULTS, type NormalizedUserSettings } from '../shared/settings';
 
 export interface AudioTriggerOptions {
   readonly chrome?: ChromeLike;
@@ -33,10 +33,17 @@ export function initializeAudioTrigger(
   };
 }
 
+type AudioEventPayload =
+  | { type: 'AUDIO_CHIME'; volume: number }
+  | { type: 'AUDIO_SETTINGS_UPDATE'; sound: boolean; soundVolume: number };
+
 class AudioTrigger {
-  private lastTotal = 0;
   private disposed = false;
   private readonly unsubscribe: () => void;
+  private readonly storageListener: StorageChangeListener;
+  private soundEnabled = SETTINGS_DEFAULTS.sound;
+  private soundVolume = SETTINGS_DEFAULTS.soundVolume;
+  private settingsInitialized = false;
 
   constructor(
     private readonly aggregator: BackgroundAggregator,
@@ -46,14 +53,28 @@ class AudioTrigger {
     this.unsubscribe = aggregator.onStateChange((event) => {
       void this.handleStateChange(event);
     });
-    void aggregator.ready
-      .then(() => aggregator.getSnapshot())
-      .then((snapshot) => {
-        this.lastTotal = snapshot.lastTotal ?? 0;
-      })
-      .catch((error) => {
-        this.logger.warn('failed to init audio trigger state', error);
-      });
+    this.storageListener = (changes, areaName) => {
+      if (this.disposed || areaName !== 'sync') {
+        return;
+      }
+      const patch: Partial<Pick<NormalizedUserSettings, 'sound' | 'soundVolume'>> = {};
+      const soundChange = changes.sound;
+      if (soundChange && typeof soundChange.newValue === 'boolean') {
+        patch.sound = soundChange.newValue;
+      }
+      const volumeChange = changes.soundVolume;
+      if (volumeChange && typeof volumeChange.newValue === 'number') {
+        patch.soundVolume = volumeChange.newValue;
+      }
+      if (Object.keys(patch).length > 0) {
+        this.applySettings(patch);
+      }
+    };
+    this.chrome.storage.onChanged.addListener(this.storageListener);
+    void aggregator.ready.catch((error) => {
+      this.logger.warn('failed to init audio trigger state', error);
+    });
+    void this.refreshSettings();
   }
 
   public dispose(): void {
@@ -62,6 +83,38 @@ class AudioTrigger {
     }
     this.disposed = true;
     this.unsubscribe();
+    this.chrome.storage.onChanged.removeListener(this.storageListener);
+  }
+
+  private async refreshSettings(): Promise<void> {
+    try {
+      const settings = await loadUserSettings(this.chrome);
+      this.applySettings({
+        sound: settings.sound,
+        soundVolume: settings.soundVolume,
+      });
+    } catch (error) {
+      this.logger.debug('failed to load audio settings', error);
+    }
+  }
+
+  private applySettings(patch: Partial<Pick<NormalizedUserSettings, 'sound' | 'soundVolume'>>): void {
+    let changed = !this.settingsInitialized;
+    if (typeof patch.sound === 'boolean' && patch.sound !== this.soundEnabled) {
+      this.soundEnabled = patch.sound;
+      changed = true;
+    }
+    if (typeof patch.soundVolume === 'number') {
+      const nextVolume = clampVolume(patch.soundVolume);
+      if (nextVolume !== this.soundVolume) {
+        this.soundVolume = nextVolume;
+        changed = true;
+      }
+    }
+    this.settingsInitialized = true;
+    if (changed) {
+      void this.broadcastSettingsUpdate();
+    }
   }
 
   private async handleStateChange(event: AggregatorChangeEvent): Promise<void> {
@@ -70,32 +123,49 @@ class AudioTrigger {
     }
     const previousTotal = event.previous.lastTotal ?? 0;
     const nextTotal = event.current.lastTotal ?? 0;
-    this.lastTotal = nextTotal;
     if (previousTotal > 0 && nextTotal === 0) {
       await this.broadcastAudioChime();
     }
   }
 
-  private async broadcastAudioChime(): Promise<void> {
-    await this.sendRuntimeMessage();
-    await this.sendTabMessages();
+  private async broadcastSettingsUpdate(): Promise<void> {
+    const event: AudioEventPayload = {
+      type: 'AUDIO_SETTINGS_UPDATE',
+      sound: this.soundEnabled,
+      soundVolume: this.soundVolume,
+    };
+    await this.sendRuntimeMessage(event);
+    await this.sendTabMessages(event);
   }
 
-  private async sendRuntimeMessage(): Promise<void> {
+  private async broadcastAudioChime(): Promise<void> {
+    if (!this.soundEnabled) {
+      return;
+    }
+    const volume = clampVolume(this.soundVolume);
+    if (volume <= 0) {
+      return;
+    }
+    const event: AudioEventPayload = { type: 'AUDIO_CHIME', volume };
+    await this.sendRuntimeMessage(event);
+    await this.sendTabMessages(event);
+  }
+
+  private async sendRuntimeMessage(event: AudioEventPayload): Promise<void> {
     try {
-      await this.chrome.runtime.sendMessage(AUDIO_EVENT);
+      await this.chrome.runtime.sendMessage(event);
     } catch (error) {
       this.logger.debug('runtime audio message failed', error);
     }
   }
 
-  private async sendTabMessages(): Promise<void> {
+  private async sendTabMessages(event: AudioEventPayload): Promise<void> {
     try {
       const tabIds = await this.aggregator.getTrackedTabIds();
       await Promise.all(
         tabIds.map(async (tabId) => {
           try {
-            await this.chrome.tabs.sendMessage(tabId, AUDIO_EVENT);
+            await this.chrome.tabs.sendMessage(tabId, event);
           } catch (error) {
             this.logger.debug('audio tab message failed', { tabId, error });
           }
@@ -105,4 +175,17 @@ class AudioTrigger {
       this.logger.debug('audio tab broadcast failed', error);
     }
   }
+}
+
+function clampVolume(value: number): number {
+  if (!Number.isFinite(value)) {
+    return SETTINGS_DEFAULTS.soundVolume;
+  }
+  if (value <= 0) {
+    return 0;
+  }
+  if (value >= 1) {
+    return 1;
+  }
+  return value;
 }
