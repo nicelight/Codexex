@@ -1,4 +1,6 @@
 import type { PopupRenderState, PopupRenderStateTab } from '../shared/contracts';
+import { resolveChrome } from '../shared/chrome';
+import { loadUserSettings, saveUserSettings, type NormalizedUserSettings } from '../shared/settings';
 import { getDefaultPopupMessages } from './messages';
 import { requestPopupState } from './state';
 import './styles.css';
@@ -9,15 +11,22 @@ export async function mountPopup(root: HTMLElement): Promise<void> {
   renderLoading(root, fallbackMessages);
 
   try {
-    const state = await requestPopupState();
-    renderPopup(root, state);
+    const [state, settings] = await Promise.all([
+      requestPopupState(),
+      loadUserSettings(),
+    ]);
+    renderPopup(root, state, settings);
   } catch (error) {
     console.error('Failed to load popup state', error);
     renderError(root, fallbackMessages, fallbackLocale);
   }
 }
 
-export function renderPopup(root: HTMLElement, state: PopupRenderState): void {
+export function renderPopup(
+  root: HTMLElement,
+  state: PopupRenderState,
+  settings: NormalizedUserSettings,
+): void {
   const defaultMessages = getDefaultPopupMessages(state.locale);
   const messages = { ...defaultMessages, ...(state.messages ?? {}) };
 
@@ -29,12 +38,19 @@ export function renderPopup(root: HTMLElement, state: PopupRenderState): void {
   const container = document.createElement('div');
   container.className = 'popup';
 
-  container.append(createHeader(state, messages), createContent(state, messages));
+  container.append(
+    createHeader(state, messages, settings),
+    createContent(state, messages),
+  );
 
   root.replaceChildren(container);
 }
 
-function createHeader(state: PopupRenderState, messages: Record<string, string>): HTMLElement {
+function createHeader(
+  state: PopupRenderState,
+  messages: Record<string, string>,
+  settings: NormalizedUserSettings,
+): HTMLElement {
   const header = document.createElement('header');
   header.className = 'popup__header';
 
@@ -65,9 +81,141 @@ function createHeader(state: PopupRenderState, messages: Record<string, string>)
   updated.textContent = `${updatedLabel}: ${formatTimestamp(state.generatedAt, state.locale)}`;
 
   meta.append(total, updated);
-  header.append(meta);
+  header.append(meta, createSoundControls(state.locale, settings));
 
   return header;
+}
+
+interface SoundControlsState {
+  sound: boolean;
+  soundVolume: number;
+}
+
+const SOUND_LABELS: Record<'en' | 'ru', { toggleOn: string; toggleOff: string; volume: string }> = {
+  en: {
+    toggleOn: 'Disable sound notifications',
+    toggleOff: 'Enable sound notifications',
+    volume: 'Notification volume',
+  },
+  ru: {
+    toggleOn: 'Выключить звуковые уведомления',
+    toggleOff: 'Включить звуковые уведомления',
+    volume: 'Громкость уведомлений',
+  },
+};
+
+function createSoundControls(locale: 'en' | 'ru', settings: NormalizedUserSettings): HTMLElement {
+  const labels = SOUND_LABELS[locale] ?? SOUND_LABELS.en;
+  const container = document.createElement('div');
+  container.className = 'popup__controls';
+
+  const state: SoundControlsState = {
+    sound: settings.sound,
+    soundVolume: clamp01(settings.soundVolume),
+  };
+
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.className = 'popup__sound-toggle';
+  toggle.textContent = state.sound ? '🔔' : '🔕';
+  toggle.title = state.sound ? labels.toggleOn : labels.toggleOff;
+  toggle.setAttribute('aria-pressed', state.sound ? 'true' : 'false');
+
+  const slider = document.createElement('input');
+  slider.type = 'range';
+  slider.className = 'popup__volume-slider';
+  slider.min = '0';
+  slider.max = '100';
+  slider.value = String(Math.round(state.soundVolume * 100));
+  slider.step = '1';
+  slider.setAttribute('aria-label', labels.volume);
+  slider.disabled = !state.sound;
+
+  toggle.addEventListener('click', () => {
+    state.sound = !state.sound;
+    toggle.textContent = state.sound ? '🔔' : '🔕';
+    toggle.setAttribute('aria-pressed', state.sound ? 'true' : 'false');
+    toggle.title = state.sound ? labels.toggleOn : labels.toggleOff;
+    slider.disabled = !state.sound;
+    void saveUserSettings({ sound: state.sound });
+    if (state.sound && clamp01(Number(slider.value) / 100) === 0) {
+      slider.value = String(Math.round(state.soundVolume * 100));
+    }
+  });
+
+  slider.addEventListener('input', () => {
+    const nextVolume = clamp01(Number(slider.value) / 100);
+    state.soundVolume = nextVolume;
+  });
+
+  slider.addEventListener('change', () => {
+    const volume = clamp01(Number(slider.value) / 100);
+    state.soundVolume = volume;
+    void saveUserSettings({ soundVolume: volume });
+    if (state.sound) {
+      void previewer.play(volume).catch((error) => {
+        console.warn('Sound preview failed', error);
+      });
+    }
+  });
+
+  container.append(toggle, slider);
+  return container;
+}
+
+const AUDIO_RESOURCE = 'media/oh-oh-icq-sound.mp3';
+
+class PopupChimePreviewer {
+  private audio?: HTMLAudioElement;
+
+  async play(volume: number): Promise<void> {
+    const gain = clamp01(volume);
+    if (gain <= 0) {
+      return;
+    }
+    const element = await this.ensureAudio();
+    if (!element) {
+      return;
+    }
+    element.pause();
+    element.currentTime = 0;
+    element.volume = gain;
+    try {
+      await element.play();
+    } catch (error) {
+      console.warn('Audio playback failed', error);
+    }
+  }
+
+  private async ensureAudio(): Promise<HTMLAudioElement | undefined> {
+    if (this.audio) {
+      return this.audio;
+    }
+    if (typeof Audio === 'undefined') {
+      return undefined;
+    }
+    const chrome = resolveChrome();
+    const src = chrome.runtime?.getURL ? chrome.runtime.getURL(AUDIO_RESOURCE) : AUDIO_RESOURCE;
+    const element = new Audio(src);
+    element.preload = 'auto';
+    this.audio = element;
+    return this.audio;
+  }
+}
+
+const previewer = new PopupChimePreviewer();
+
+function clamp01(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  if (value <= 0) {
+    return 0;
+  }
+  if (value >= 1) {
+    return 1;
+  }
+  return value;
 }
 
 function createContent(state: PopupRenderState, messages: Record<string, string>): HTMLElement {

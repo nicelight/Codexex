@@ -1,7 +1,7 @@
 import { resolveChrome, type ChromeLogger, createChildLogger } from '../shared/chrome';
 
 const AUDIO_RESOURCE = 'media/oh-oh-icq-sound.mp3';
-const DEFAULT_GAIN = 0.2;
+const DEFAULT_VOLUME = 0.2;
 const ATTACK_TIME = 0.02;
 const RELEASE_TIME = 0.35;
 const FALLBACK_FREQUENCY = 880;
@@ -21,6 +21,8 @@ export class ContentAudioController {
   private pending = false;
   private unlocked = false;
   private initialized = false;
+  private volume = DEFAULT_VOLUME;
+  private enabled = true;
 
   constructor(options: ContentAudioControllerOptions) {
     this.window = options.window;
@@ -64,13 +66,26 @@ export class ContentAudioController {
     }
   }
 
-  public async handleChimeRequest(): Promise<void> {
+  public applySettings(settings: { sound?: boolean; soundVolume?: number }): void {
+    if (typeof settings.sound === 'boolean') {
+      this.enabled = settings.sound;
+    }
+    if (typeof settings.soundVolume === 'number') {
+      this.volume = clampVolume(settings.soundVolume);
+    }
+  }
+
+  public async handleChimeRequest(volumeOverride?: number): Promise<void> {
+    if (!this.enabled) {
+      this.pending = false;
+      return;
+    }
     if (!this.unlocked) {
       this.pending = true;
       return;
     }
     await this.ensureAudioBuffer();
-    await this.playChime();
+    await this.playChime(volumeOverride);
   }
 
   private async ensureAudioBuffer(): Promise<void> {
@@ -100,19 +115,23 @@ export class ContentAudioController {
     return undefined;
   }
 
-  private async playChime(): Promise<void> {
+  private async playChime(volumeOverride?: number): Promise<void> {
     if (!this.audioContext || !this.gainNode) {
       this.pending = true;
       return;
     }
-    if (this.audioBuffer) {
-      this.playBuffer();
+    const gain = clampVolume(typeof volumeOverride === 'number' ? volumeOverride : this.volume);
+    if (gain <= 0) {
       return;
     }
-    this.playOscillator();
+    if (this.audioBuffer) {
+      this.playBuffer(gain);
+      return;
+    }
+    this.playOscillator(gain);
   }
 
-  private playBuffer(): void {
+  private playBuffer(gain: number): void {
     if (!this.audioContext || !this.gainNode || !this.audioBuffer) {
       this.pending = true;
       return;
@@ -121,7 +140,7 @@ export class ContentAudioController {
     const source = context.createBufferSource();
     source.buffer = this.audioBuffer;
     source.connect(this.gainNode);
-    scheduleEnvelope(context, this.gainNode);
+    scheduleEnvelope(context, this.gainNode, gain);
     source.start(context.currentTime);
     source.stop(context.currentTime + RELEASE_TIME + 0.1);
     source.addEventListener('ended', () => {
@@ -129,7 +148,7 @@ export class ContentAudioController {
     });
   }
 
-  private playOscillator(): void {
+  private playOscillator(gain: number): void {
     if (!this.audioContext || !this.gainNode) {
       this.pending = true;
       return;
@@ -139,7 +158,7 @@ export class ContentAudioController {
     oscillator.type = 'triangle';
     oscillator.frequency.value = FALLBACK_FREQUENCY;
     oscillator.connect(this.gainNode);
-    scheduleEnvelope(context, this.gainNode);
+    scheduleEnvelope(context, this.gainNode, gain);
     oscillator.start(context.currentTime);
     oscillator.stop(context.currentTime + RELEASE_TIME + 0.1);
     oscillator.addEventListener('ended', () => {
@@ -148,10 +167,24 @@ export class ContentAudioController {
   }
 }
 
-function scheduleEnvelope(context: AudioContext, gain: GainNode): void {
+function scheduleEnvelope(context: AudioContext, gain: GainNode, volume: number): void {
   const now = context.currentTime;
   gain.gain.cancelScheduledValues(now);
+  const target = clampVolume(volume);
   gain.gain.setValueAtTime(0, now);
-  gain.gain.linearRampToValueAtTime(DEFAULT_GAIN, now + ATTACK_TIME);
+  gain.gain.linearRampToValueAtTime(target, now + ATTACK_TIME);
   gain.gain.linearRampToValueAtTime(0, now + ATTACK_TIME + RELEASE_TIME);
+}
+
+function clampVolume(value: number): number {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_VOLUME;
+  }
+  if (value <= 0) {
+    return 0;
+  }
+  if (value >= 1) {
+    return 1;
+  }
+  return value;
 }

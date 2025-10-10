@@ -40,6 +40,52 @@ body {
   font-size: 0.75rem;
 }
 
+.popup__controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.popup__sound-toggle {
+  border: none;
+  background: #2563eb;
+  color: #ffffff;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 9999px;
+  font-size: 1.1rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.popup__sound-toggle[aria-pressed='false'] {
+  background: #d1d5db;
+  color: #374151;
+}
+
+.popup__sound-toggle:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.popup__sound-toggle:hover {
+  transform: scale(1.05);
+}
+
+.popup__volume-slider {
+  flex: 1;
+  min-width: 0;
+  accent-color: #2563eb;
+}
+
+.popup__volume-slider:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .popup__total {
   display: flex;
   gap: 0.5rem;
