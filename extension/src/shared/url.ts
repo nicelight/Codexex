@@ -12,10 +12,25 @@ export function isCodexTasksListingPath(normalizedPathname: string): boolean {
   return normalizedPathname === '/codex';
 }
 
+export function isCodexTaskDetailsPath(normalizedPathname: string): boolean {
+  if (!normalizedPathname.startsWith('/codex/')) {
+    return false;
+  }
+  const segments = normalizedPathname.split('/').filter((segment) => segment.length > 0);
+  if (segments.length < 3) {
+    return false;
+  }
+  if (segments[0] !== 'codex') {
+    return false;
+  }
+  return segments[1] === 'tasks';
+}
+
 export interface CanonicalCodexLocation {
   readonly canonical: string;
   readonly normalizedPathname: string;
   readonly isTasksListing: boolean;
+  readonly isTaskDetails: boolean;
 }
 
 export function canonicalizeCodexUrl(href: string): CanonicalCodexLocation | undefined {
@@ -26,6 +41,7 @@ export function canonicalizeCodexUrl(href: string): CanonicalCodexLocation | und
       canonical: `${parsed.origin}${normalizedPathname}`,
       normalizedPathname,
       isTasksListing: isCodexTasksListingPath(normalizedPathname),
+      isTaskDetails: isCodexTaskDetailsPath(normalizedPathname),
     };
   } catch (error) {
     console.warn('failed to canonicalize url', { href, error });

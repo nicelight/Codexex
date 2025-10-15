@@ -87,6 +87,135 @@ describe('BackgroundAggregator', () => {
     expect(snapshot.tabs['3'].count).toBe(1);
   });
 
+  it('uses task detail counter when listing tabs are absent', async () => {
+    const aggregator = initializeAggregator({ chrome: chromeMock });
+    await aggregator.ready;
+
+    const detailMessage: ContentScriptTasksUpdate = {
+      type: 'TASKS_UPDATE',
+      origin: 'https://chatgpt.com/codex/tasks/task_123',
+      active: true,
+      count: 4,
+      signals: [
+        { detector: 'D4_TASK_COUNTER', evidence: 'detail-counter' },
+      ],
+      ts: 1_000,
+    };
+    const detailSender = { tab: { id: 5, title: 'Codex Task' } } as chrome.runtime.MessageSender;
+
+    await aggregator.handleTasksUpdate(detailMessage, detailSender);
+
+    const secondMessage: ContentScriptTasksUpdate = {
+      ...detailMessage,
+      origin: 'https://chatgpt.com/codex/tasks/task_999',
+      count: 2,
+      ts: 1_500,
+    };
+    const secondSender = { tab: { id: 6, title: 'Codex Task' } } as chrome.runtime.MessageSender;
+    await aggregator.handleTasksUpdate(secondMessage, secondSender);
+
+    const snapshot = await aggregator.getSnapshot();
+    expect(snapshot.lastTotal).toBe(4);
+  });
+
+  it('prefers listing totals when both listing and details are present', async () => {
+    const aggregator = initializeAggregator({ chrome: chromeMock });
+    await aggregator.ready;
+
+    const listingMessage: ContentScriptTasksUpdate = {
+      type: 'TASKS_UPDATE',
+      origin: 'https://chatgpt.com/codex',
+      active: true,
+      count: 2,
+      signals: [
+        { detector: 'D2_STOP_BUTTON', evidence: 'stop-button' },
+      ],
+      ts: 2_000,
+    };
+    const listingSender = { tab: { id: 7, title: 'Codex – Tasks' } } as chrome.runtime.MessageSender;
+    await aggregator.handleTasksUpdate(listingMessage, listingSender);
+
+    const detailMessage: ContentScriptTasksUpdate = {
+      type: 'TASKS_UPDATE',
+      origin: 'https://chatgpt.com/codex/tasks/task_123',
+      active: true,
+      count: 5,
+      signals: [
+        { detector: 'D4_TASK_COUNTER', evidence: 'detail-counter' },
+      ],
+      ts: 2_500,
+    };
+    const detailSender = { tab: { id: 8, title: 'Codex Task' } } as chrome.runtime.MessageSender;
+    await aggregator.handleTasksUpdate(detailMessage, detailSender);
+
+    const snapshot = await aggregator.getSnapshot();
+    expect(snapshot.lastTotal).toBe(2);
+  });
+
+  it('recalculates aggregated total from stored state using canonical rules', async () => {
+    const storageKey = getSessionStateKey();
+    await chromeMock.storage.session.set({
+      [storageKey]: {
+        tabs: {
+          '10': {
+            origin: 'https://chatgpt.com/codex',
+            title: 'Codex – Tasks',
+            count: 3,
+            active: true,
+            updatedAt: 1_000,
+            lastSeenAt: 1_000,
+            heartbeat: {
+              lastReceivedAt: 1_000,
+              expectedIntervalMs: 15_000,
+              status: 'OK',
+              missedCount: 0,
+            },
+            signals: [
+              {
+                detector: 'D2_STOP_BUTTON',
+                evidence: 'stop-button',
+                taskKey: 'task-1',
+              },
+            ],
+          },
+          '11': {
+            origin: 'https://chatgpt.com/codex/tasks/task_123',
+            title: 'Codex Task',
+            count: 5,
+            active: true,
+            updatedAt: 2_000,
+            lastSeenAt: 2_000,
+            heartbeat: {
+              lastReceivedAt: 2_000,
+              expectedIntervalMs: 15_000,
+              status: 'OK',
+              missedCount: 0,
+            },
+            signals: [
+              {
+                detector: 'D4_TASK_COUNTER',
+                evidence: 'detail-counter',
+              },
+            ],
+          },
+        },
+        lastTotal: 9,
+        debounce: {
+          ms: 12_000,
+          since: 0,
+        },
+      },
+    });
+
+    const aggregator = initializeAggregator({ chrome: chromeMock });
+    await aggregator.ready;
+
+    const snapshot = await aggregator.getSnapshot();
+    expect(snapshot.lastTotal).toBe(3);
+    expect(snapshot.tabs['10']?.count).toBe(3);
+    expect(snapshot.tabs['11']?.count).toBe(5);
+  });
+
   it('resets heartbeat status on TASKS_HEARTBEAT', async () => {
     let currentTime = 0;
     const aggregator = initializeAggregator({ chrome: chromeMock, now: () => currentTime });

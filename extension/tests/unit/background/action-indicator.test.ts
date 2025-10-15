@@ -146,6 +146,10 @@ describe('action-indicator', () => {
   test('deriveBadgeVisual maps palette', () => {
     expect(deriveBadgeVisual(-3)).toEqual({ text: '0', color: '#16A34A' });
     expect(deriveBadgeVisual(0)).toEqual({ text: '0', color: '#16A34A' });
+    expect(deriveBadgeVisual(0, { hasCodexTabs: false })).toEqual({
+      text: '0',
+      color: '#7C3AED',
+    });
     expect(deriveBadgeVisual(1)).toEqual({ text: '1', color: '#F97316' });
     expect(deriveBadgeVisual(2)).toEqual({ text: '2', color: '#F2542D' });
     expect(deriveBadgeVisual(3)).toEqual({ text: '3', color: '#E11D48' });

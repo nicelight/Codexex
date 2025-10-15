@@ -176,7 +176,7 @@ class BackgroundAggregatorImpl implements BackgroundAggregator {
         }
 
         next.tabs[tabKey] = existing;
-        const nextTotal = sumCounts(next.tabs);
+        const nextTotal = deriveAggregatedTotal(next.tabs);
         if (next.lastTotal !== nextTotal) {
           next.lastTotal = nextTotal;
           mutated = true;
@@ -265,7 +265,7 @@ class BackgroundAggregatorImpl implements BackgroundAggregator {
           return false;
         }
         delete next.tabs[tabKey];
-        const nextTotal = sumCounts(next.tabs);
+        const nextTotal = deriveAggregatedTotal(next.tabs);
         let mutated = false;
         if (next.lastTotal !== nextTotal) {
           next.lastTotal = nextTotal;
@@ -492,17 +492,18 @@ function ensureDebounceDefaults(debounce: AggregatedDebounceState): void {
 }
 
 function normalizeState(state: AggregatedTabsState): AggregatedTabsState {
+  const normalizedTabs: Record<string, AggregatedTabState> = {};
+  for (const [tabId, tab] of Object.entries(state.tabs ?? {})) {
+    normalizedTabs[tabId] = normalizeTabState(tab);
+  }
   const normalized: AggregatedTabsState = {
-    tabs: {},
-    lastTotal: Math.max(0, state.lastTotal ?? 0),
+    tabs: normalizedTabs,
+    lastTotal: deriveAggregatedTotal(normalizedTabs),
     debounce: {
       ms: state.debounce?.ms ?? DEFAULT_DEBOUNCE_MS,
       since: state.debounce?.since ?? 0,
     },
   };
-  for (const [tabId, tab] of Object.entries(state.tabs ?? {})) {
-    normalized.tabs[tabId] = normalizeTabState(tab);
-  }
   ensureDebounceDefaults(normalized.debounce);
   return normalized;
 }
@@ -550,27 +551,48 @@ function cloneState(state: AggregatedTabsState): AggregatedTabsState {
   };
 }
 
-function sumCounts(tabs: Record<string, AggregatedTabState>): number {
-  const grouped = new Map<string, number>();
-  for (const [tabId, tab] of Object.entries(tabs)) {
-    const key = createAggregationGroupKey(tab, tabId);
-    const previous = grouped.get(key) ?? 0;
-    const next = tab.count > previous ? tab.count : previous;
-    grouped.set(key, next);
-  }
-  let total = 0;
-  for (const count of grouped.values()) {
-    total += count;
-  }
-  return total;
-}
+function deriveAggregatedTotal(tabs: Record<string, AggregatedTabState>): number {
+  const listingGroups = new Map<string, number>();
+  let hasListing = false;
+  let taskDetailsCount = 0;
+  let hasTaskDetails = false;
+  let fallbackTotal = 0;
 
-function createAggregationGroupKey(tab: AggregatedTabState, tabId: string): string {
-  const canonical = canonicalizeCodexUrl(tab.origin);
-  if (canonical?.isTasksListing) {
-    return `listing:${canonical.canonical}`;
+  for (const tab of Object.values(tabs)) {
+    const canonical = canonicalizeCodexUrl(tab.origin);
+    if (canonical?.isTasksListing) {
+      hasListing = true;
+      const key = canonical.canonical;
+      const previous = listingGroups.get(key) ?? 0;
+      const next = tab.count > previous ? tab.count : previous;
+      listingGroups.set(key, next);
+      continue;
+    }
+    if (canonical?.isTaskDetails) {
+      hasTaskDetails = true;
+      taskDetailsCount = Math.max(taskDetailsCount, tab.count);
+      continue;
+    }
+    fallbackTotal += tab.count;
   }
-  return `tab:${tabId}`;
+
+  if (!hasListing && hasTaskDetails) {
+    return taskDetailsCount;
+  }
+
+  if (listingGroups.size > 0) {
+    let total = 0;
+    for (const count of listingGroups.values()) {
+      total += count;
+    }
+    return total;
+  }
+
+  if (hasTaskDetails) {
+    return taskDetailsCount;
+  }
+
+  return fallbackTotal;
 }
 
 function areAllCountsZero(tabs: Record<string, AggregatedTabState>): boolean {
