@@ -38,7 +38,7 @@ export async function generatePopupRenderState(
     return b.tabId - a.tabId;
   });
 
-  const totalActive = Math.max(0, tabs.reduce((sum, tab) => sum + tab.count, 0));
+  const totalActive = deriveAggregatedTotal(snapshot.lastTotal);
   const messages = { ...getDefaultPopupMessages(locale) };
 
   const state: PopupRenderState = {
@@ -51,6 +51,14 @@ export async function generatePopupRenderState(
 
   assertPopupRenderState(state);
   return state;
+}
+
+function deriveAggregatedTotal(total: number): number {
+  if (!Number.isFinite(total)) {
+    return 0;
+  }
+  const normalized = Math.max(0, Math.trunc(total));
+  return normalized;
 }
 
 function mapTabs(state: AggregatedTabsState): PopupRenderStateTab[] {

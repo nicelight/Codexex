@@ -78,4 +78,53 @@ describe('generatePopupRenderState', () => {
     });
     expect(state.messages?.title).toBe('Наблюдатель задач Codex');
   });
+
+  it('uses aggregated total from snapshot even if tab counts differ', async () => {
+    const snapshot = {
+      tabs: {
+        '1': {
+          origin: 'https://codex.openai.com/codex',
+          title: 'Listing copy',
+          count: 4,
+          active: true,
+          updatedAt: 1_000,
+          lastSeenAt: 1_000,
+          heartbeat: {
+            lastReceivedAt: 1_000,
+            expectedIntervalMs: 15_000,
+            status: 'OK' as const,
+            missedCount: 0,
+          },
+        },
+        '2': {
+          origin: 'https://codex.openai.com/codex?tab=duplicate',
+          title: 'Listing duplicate',
+          count: 4,
+          active: true,
+          updatedAt: 1_100,
+          lastSeenAt: 1_100,
+          heartbeat: {
+            lastReceivedAt: 1_100,
+            expectedIntervalMs: 15_000,
+            status: 'OK' as const,
+            missedCount: 0,
+          },
+        },
+      },
+      lastTotal: 4,
+      debounce: { ms: 12_000, since: 0 },
+    };
+
+    const aggregator = {
+      getSnapshot: vi.fn(async () => snapshot),
+    } as unknown as BackgroundAggregator;
+
+    const state = await generatePopupRenderState(aggregator, {
+      chrome: chromeMock,
+      now: () => 2_000,
+    });
+
+    expect(state.totalActive).toBe(4);
+    expect(state.tabs).toHaveLength(2);
+  });
 });
