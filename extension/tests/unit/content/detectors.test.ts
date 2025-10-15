@@ -27,6 +27,32 @@ describe('content detectors', () => {
     );
   });
 
+  it('detects task counter indicator on detail pages', () => {
+    document.documentElement.lang = 'en';
+    document.body.innerHTML = `
+      <div class="relative h-10 w-10">
+        <div class="absolute inset-0 flex items-center justify-center">
+          <svg class="animate-spin" role="img"></svg>
+          <span class="text-xs">2</span>
+        </div>
+      </div>
+    `;
+
+    const pipeline = createDetectorPipeline({
+      document,
+      logger: noopLogger,
+      enableCardHeuristic: false,
+    });
+    const scanner = new ActivityScanner(pipeline, noopLogger);
+    const snapshot = scanner.scan(Date.now());
+
+    expect(snapshot.active).toBe(true);
+    expect(snapshot.count).toBe(2);
+    expect(
+      snapshot.signals.some((signal) => signal.detector === 'D4_TASK_COUNTER'),
+    ).toBe(true);
+  });
+
   it('detects stop buttons in English interface', () => {
     document.documentElement.lang = 'en';
     document.body.innerHTML = `

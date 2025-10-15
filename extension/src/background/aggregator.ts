@@ -552,12 +552,24 @@ function cloneState(state: AggregatedTabsState): AggregatedTabsState {
 
 function sumCounts(tabs: Record<string, AggregatedTabState>): number {
   const grouped = new Map<string, number>();
+  let detailMax: number | undefined;
+
   for (const [tabId, tab] of Object.entries(tabs)) {
-    const key = createAggregationGroupKey(tab, tabId);
+    const canonical = canonicalizeCodexUrl(tab.origin);
+    if (canonical?.isTaskDetails) {
+      detailMax = typeof detailMax === 'number' ? Math.max(detailMax, tab.count) : tab.count;
+      continue;
+    }
+    const key = createAggregationGroupKey(tab, tabId, canonical);
     const previous = grouped.get(key) ?? 0;
     const next = tab.count > previous ? tab.count : previous;
     grouped.set(key, next);
   }
+
+  if (typeof detailMax === 'number') {
+    return detailMax;
+  }
+
   let total = 0;
   for (const count of grouped.values()) {
     total += count;
@@ -565,8 +577,11 @@ function sumCounts(tabs: Record<string, AggregatedTabState>): number {
   return total;
 }
 
-function createAggregationGroupKey(tab: AggregatedTabState, tabId: string): string {
-  const canonical = canonicalizeCodexUrl(tab.origin);
+function createAggregationGroupKey(
+  tab: AggregatedTabState,
+  tabId: string,
+  canonical: ReturnType<typeof canonicalizeCodexUrl>,
+): string {
   if (canonical?.isTasksListing) {
     return `listing:${canonical.canonical}`;
   }

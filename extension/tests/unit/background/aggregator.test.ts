@@ -87,6 +87,36 @@ describe('BackgroundAggregator', () => {
     expect(snapshot.tabs['3'].count).toBe(1);
   });
 
+  it('prefers task detail counters over listing totals when both are present', async () => {
+    const aggregator = initializeAggregator({ chrome: chromeMock });
+    await aggregator.ready;
+
+    const listingSender = { tab: { id: 4, title: 'Codex – Listing' } } as chrome.runtime.MessageSender;
+    const listingUpdate: ContentScriptTasksUpdate = {
+      type: 'TASKS_UPDATE',
+      origin: 'https://chatgpt.com/codex',
+      active: true,
+      count: 3,
+      signals: [],
+      ts: 2_000,
+    };
+    await aggregator.handleTasksUpdate(listingUpdate, listingSender);
+
+    const detailSender = { tab: { id: 5, title: 'Codex – Task detail' } } as chrome.runtime.MessageSender;
+    const detailUpdate: ContentScriptTasksUpdate = {
+      ...listingUpdate,
+      origin: 'https://chatgpt.com/codex/tasks/task_123',
+      count: 1,
+      ts: 2_500,
+    };
+    await aggregator.handleTasksUpdate(detailUpdate, detailSender);
+
+    const snapshot = await aggregator.getSnapshot();
+    expect(snapshot.tabs['4'].count).toBe(3);
+    expect(snapshot.tabs['5'].count).toBe(1);
+    expect(snapshot.lastTotal).toBe(1);
+  });
+
   it('resets heartbeat status on TASKS_HEARTBEAT', async () => {
     let currentTime = 0;
     const aggregator = initializeAggregator({ chrome: chromeMock, now: () => currentTime });
