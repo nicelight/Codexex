@@ -27,6 +27,31 @@ describe('content detectors', () => {
     );
   });
 
+  it('extracts counter from task details spinner', () => {
+    document.documentElement.lang = 'en';
+    document.body.innerHTML = `
+      <div class="relative size-6">
+        <div class="absolute inset-0 flex items-center justify-center">
+          <span class="text-xs">5</span>
+        </div>
+      </div>
+    `;
+
+    const pipeline = createDetectorPipeline({
+      document,
+      logger: noopLogger,
+      enableCardHeuristic: false,
+    });
+    const scanner = new ActivityScanner(pipeline, noopLogger);
+    const snapshot = scanner.scan(Date.now());
+
+    expect(snapshot.active).toBe(true);
+    expect(snapshot.count).toBe(5);
+    expect(snapshot.signals.some((signal) => signal.detector === 'D4_TASK_COUNTER')).toBe(
+      true,
+    );
+  });
+
   it('detects stop buttons in English interface', () => {
     document.documentElement.lang = 'en';
     document.body.innerHTML = `

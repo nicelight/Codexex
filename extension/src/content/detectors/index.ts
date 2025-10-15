@@ -3,6 +3,7 @@ import { detectLocale } from './helpers';
 import { createCardHeuristicDetector } from './card-heuristic-detector';
 import { createSpinnerDetector } from './spinner-detector';
 import { createStopButtonDetector } from './stop-button-detector';
+import { createTaskCounterDetector } from './task-counter-detector';
 import type { Detector, DetectorContext } from './types';
 
 export interface DetectorFactoryOptions {
@@ -19,6 +20,7 @@ export interface DetectorPipeline {
 
 export function createDetectorPipeline(options: DetectorFactoryOptions): DetectorPipeline {
   const detectors: Detector[] = [
+    createTaskCounterDetector(),
     createSpinnerDetector(),
     createStopButtonDetector(),
     createCardHeuristicDetector({ enabled: Boolean(options.enableCardHeuristic) }),

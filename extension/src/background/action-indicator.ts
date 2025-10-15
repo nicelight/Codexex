@@ -29,6 +29,8 @@ const COLOR_SCALE: ReadonlyArray<{ readonly threshold: number; readonly color: s
   { threshold: 4, color: '#C2185B' },
 ];
 
+const NO_CODEX_TABS_COLOR = '#7C3AED';
+
 const TOOLTIP_BY_LOCALE: Record<'en' | 'ru', (count: string) => string> = {
   en: (count) => `${count} active Codex tasks`,
   ru: (count) => `${count} активных задач Codex`,
@@ -74,7 +76,9 @@ export function initializeActionIndicator(
     if (disposed) {
       return;
     }
-    const visual = deriveBadgeVisual(state.lastTotal ?? 0);
+    const visual = deriveBadgeVisual(state.lastTotal ?? 0, {
+      hasCodexTabs: Object.keys(state.tabs).length > 0,
+    });
     await safeCall(() => actionApi.setBadgeBackgroundColor({ color: BADGE_BACKGROUND }));
     await safeCall(() => actionApi.setBadgeText({ text: '' }));
     if (actionApi.setTitle) {
@@ -119,8 +123,16 @@ export function initializeActionIndicator(
   }
 }
 
-export function deriveBadgeVisual(total: number): BadgeVisual {
+export interface BadgeVisualOptions {
+  readonly hasCodexTabs?: boolean;
+}
+
+export function deriveBadgeVisual(total: number, options: BadgeVisualOptions = {}): BadgeVisual {
   const safeTotal = Number.isFinite(total) ? Math.max(0, Math.trunc(total)) : 0;
+  const hasCodexTabs = options.hasCodexTabs ?? true;
+  if (!hasCodexTabs && safeTotal === 0) {
+    return { text: '0', color: NO_CODEX_TABS_COLOR };
+  }
   const text = safeTotal > MAX_DISPLAYABLE_COUNT ? String(MAX_DISPLAYABLE_COUNT) : String(safeTotal);
   const color = selectColor(safeTotal);
   return { text, color };

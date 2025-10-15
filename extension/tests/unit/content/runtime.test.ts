@@ -160,13 +160,18 @@ describe('content runtime', () => {
     runtime.destroy();
   });
 
-  it('ignores task details page when scanning for activity', async () => {
+  it('scans task details page for activity counters', async () => {
     setWindowLocation('https://chatgpt.com/codex/tasks/task_123');
     const runtime = new ContentScriptRuntime({ window });
     await runtime.start();
 
-    document.body.innerHTML =
-      '<div aria-busy="true"></div><button data-testid="codex-stop">Stop</button>';
+    document.body.innerHTML = `
+      <div class="relative size-6">
+        <div class="absolute inset-0 flex items-center justify-center">
+          <span class="text-xs">3</span>
+        </div>
+      </div>
+    `;
     await flushMicrotasks();
     chromeMock!.__events.runtime.onMessage.emit(
       { type: 'PING' },
@@ -178,7 +183,8 @@ describe('content runtime', () => {
 
     const messages = chromeMock!.__messages;
     const positiveUpdate = findLastTasksUpdate(messages, (message) => (message.count ?? 0) > 0);
-    expect(positiveUpdate).toBeUndefined();
+    expect(positiveUpdate).toBeDefined();
+    expect(positiveUpdate?.count).toBe(3);
 
     runtime.destroy();
   });
