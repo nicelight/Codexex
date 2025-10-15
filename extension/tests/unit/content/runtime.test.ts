@@ -2,6 +2,69 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ContentScriptRuntime } from '../../../src/content/runtime';
 import { createMockChrome, setChromeInstance } from '../../../src/shared/chrome';
 
+const ORIGINAL_LOCATION = window.location;
+
+function setWindowLocation(url: string): void {
+  const parsed = new URL(url);
+  const locationMock: Location = {
+    ancestorOrigins: {
+      length: 0,
+      item: () => null,
+      [Symbol.iterator]: function* iterate() {
+        yield* [] as string[];
+      },
+    },
+    assign: vi.fn(),
+    reload: vi.fn(),
+    replace: vi.fn(),
+    toString: () => parsed.toString(),
+    get href() {
+      return parsed.toString();
+    },
+    set href(value: string) {
+      const next = new URL(value);
+      parsed.href = next.href;
+    },
+    get origin() {
+      return parsed.origin;
+    },
+    get protocol() {
+      return parsed.protocol;
+    },
+    get host() {
+      return parsed.host;
+    },
+    get hostname() {
+      return parsed.hostname;
+    },
+    get port() {
+      return parsed.port;
+    },
+    get pathname() {
+      return parsed.pathname;
+    },
+    set pathname(value: string) {
+      parsed.pathname = value;
+    },
+    get search() {
+      return parsed.search;
+    },
+    set search(value: string) {
+      parsed.search = value;
+    },
+    get hash() {
+      return parsed.hash;
+    },
+    set hash(value: string) {
+      parsed.hash = value;
+    },
+  } as unknown as Location;
+  Object.defineProperty(window, 'location', {
+    value: locationMock,
+    configurable: true,
+  });
+}
+
 async function flushMicrotasks(iterations = 3): Promise<void> {
   for (let index = 0; index < iterations; index += 1) {
     // eslint-disable-next-line no-await-in-loop
@@ -26,12 +89,17 @@ describe('content runtime', () => {
     setChromeInstance(chromeMock);
     document.documentElement.lang = 'en';
     document.body.innerHTML = '';
+    setWindowLocation('https://chatgpt.com/codex');
   });
 
   afterEach(() => {
     vi.useRealTimers();
     setChromeInstance(undefined);
     chromeMock = undefined;
+    Object.defineProperty(window, 'location', {
+      value: ORIGINAL_LOCATION,
+      configurable: true,
+    });
   });
 
   it('delays zero updates and emits heartbeat', async () => {
@@ -88,6 +156,29 @@ describe('content runtime', () => {
     expect(messages.length).toBeGreaterThan(beforeZeroMessages);
     const zeroMessage = findLastTasksUpdate(messages, (message) => message.count === 0);
     expect(zeroMessage).toBeDefined();
+
+    runtime.destroy();
+  });
+
+  it('ignores task details page when scanning for activity', async () => {
+    setWindowLocation('https://chatgpt.com/codex/tasks/task_123');
+    const runtime = new ContentScriptRuntime({ window });
+    await runtime.start();
+
+    document.body.innerHTML =
+      '<div aria-busy="true"></div><button data-testid="codex-stop">Stop</button>';
+    await flushMicrotasks();
+    chromeMock!.__events.runtime.onMessage.emit(
+      { type: 'PING' },
+      { tab: { id: 1 } } as chrome.runtime.MessageSender,
+      () => undefined,
+    );
+    await flushMicrotasks();
+    await vi.advanceTimersByTimeAsync(500);
+
+    const messages = chromeMock!.__messages;
+    const positiveUpdate = findLastTasksUpdate(messages, (message) => (message.count ?? 0) > 0);
+    expect(positiveUpdate).toBeUndefined();
 
     runtime.destroy();
   });
