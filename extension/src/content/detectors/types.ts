@@ -1,7 +1,14 @@
 import type { ContentScriptTasksUpdateSignal } from '../../shared/contracts';
 import type { ChromeLogger } from '../../shared/chrome';
 
-export type DetectorId = 'D1_SPINNER' | 'D2_STOP_BUTTON' | 'D3_CARD_HEUR';
+export const DETECTOR_IDS = [
+  'D1_SPINNER',
+  'D2_STOP_BUTTON',
+  'D3_CARD_HEUR',
+  'D4_TASK_COUNTER',
+] as const;
+
+export type DetectorId = (typeof DETECTOR_IDS)[number];
 
 export interface DetectorContext {
   readonly document: Document;
