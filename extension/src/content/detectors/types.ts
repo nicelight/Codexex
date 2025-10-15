@@ -1,7 +1,11 @@
 import type { ContentScriptTasksUpdateSignal } from '../../shared/contracts';
 import type { ChromeLogger } from '../../shared/chrome';
 
-export type DetectorId = 'D1_SPINNER' | 'D2_STOP_BUTTON' | 'D3_CARD_HEUR';
+export type DetectorId =
+  | 'D1_SPINNER'
+  | 'D2_STOP_BUTTON'
+  | 'D3_CARD_HEUR'
+  | 'D4_TASK_COUNTER';
 
 export interface DetectorContext {
   readonly document: Document;
