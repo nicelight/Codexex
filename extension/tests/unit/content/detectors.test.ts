@@ -179,6 +179,53 @@ describe('content detectors', () => {
     });
   });
 
+  it('ignores hidden stop controls', () => {
+    document.documentElement.lang = 'ru';
+    document.body.innerHTML = `
+      <div class="task" data-task-id="hidden-ru" hidden>
+        <button class="btn">Отменить задачу</button>
+      </div>
+      <div class="task" data-task-id="visible-ru">
+        <button class="btn" style="display: none;">Отменить задачу</button>
+      </div>
+      <div class="task" data-task-id="aria-hidden">
+        <button class="btn" aria-hidden="true">Отменить задачу</button>
+      </div>
+    `;
+
+    const pipeline = createDetectorPipeline({
+      document,
+      logger: noopLogger,
+      enableCardHeuristic: false,
+    });
+    const scanner = new ActivityScanner(pipeline, noopLogger);
+    const snapshot = scanner.scan(Date.now());
+
+    expect(snapshot.active).toBe(false);
+    expect(snapshot.count).toBe(0);
+  });
+
+  it('ignores disabled stop controls', () => {
+    document.documentElement.lang = 'en';
+    document.body.innerHTML = `
+      <div class="task" data-task-id="disabled-en">
+        <button class="btn" disabled>Cancel task</button>
+        <button class="btn" aria-disabled="true">Cancel run</button>
+      </div>
+    `;
+
+    const pipeline = createDetectorPipeline({
+      document,
+      logger: noopLogger,
+      enableCardHeuristic: false,
+    });
+    const scanner = new ActivityScanner(pipeline, noopLogger);
+    const snapshot = scanner.scan(Date.now());
+
+    expect(snapshot.active).toBe(false);
+    expect(snapshot.count).toBe(0);
+  });
+
   it('resets detector pipeline caches on reset', () => {
     document.documentElement.lang = 'en';
     document.body.innerHTML = `<button class="btn">Stop</button>`;

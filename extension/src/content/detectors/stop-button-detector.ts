@@ -9,6 +9,46 @@ const STOP_TEXTS = {
 
 const STOP_SELECTORS = ['button', '[role="button"]', 'a[href]'] as const;
 
+function isElementDisabled(element: Element): boolean {
+  if (element instanceof HTMLButtonElement) {
+    if (element.disabled) {
+      return true;
+    }
+  }
+  const ariaDisabled = element.getAttribute('aria-disabled');
+  if (typeof ariaDisabled === 'string' && ariaDisabled.toLowerCase() === 'true') {
+    return true;
+  }
+  return false;
+}
+
+function isElementVisible(element: Element, documentRef: Document): boolean {
+  let current: Element | null = element;
+  while (current) {
+    if (current instanceof HTMLElement) {
+      if (current.hidden) {
+        return false;
+      }
+      const ariaHidden = current.getAttribute('aria-hidden');
+      if (typeof ariaHidden === 'string' && ariaHidden.toLowerCase() === 'true') {
+        return false;
+      }
+      const view = current.ownerDocument?.defaultView ?? documentRef.defaultView;
+      if (view) {
+        const style = view.getComputedStyle(current);
+        if (style.display === 'none' || style.visibility === 'hidden') {
+          return false;
+        }
+        if (Number.parseFloat(style.opacity || '1') === 0) {
+          return false;
+        }
+      }
+    }
+    current = current.parentElement;
+  }
+  return true;
+}
+
 const STOP_DATA_TEST_ID_KEYWORDS = [
   'codex-stop',
   'task-stop',
@@ -121,6 +161,12 @@ export class StopButtonDetector implements Detector {
     const matches = candidates.filter((element) => {
       if (this.cache.has(element)) {
         return true;
+      }
+      if (!isElementVisible(element, context.document)) {
+        return false;
+      }
+      if (isElementDisabled(element)) {
+        return false;
       }
       const matched = elementMatchesLocale(element, context.locale);
       if (matched) {
