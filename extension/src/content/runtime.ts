@@ -15,11 +15,26 @@ import { ActivityScanner, type TaskActivitySnapshot } from './activity-scanner';
 import { createDetectorPipeline } from './detectors';
 import { onBackgroundEvent, postToBackground } from './messaging';
 import { ContentAudioController } from './audio';
+import { isCodexTasksListingPath, normalizePathname } from '../shared/url';
 
 const ZERO_DEBOUNCE_MS = 500;
 const HEARTBEAT_INTERVAL_MS = 15_000;
 const MIN_SCAN_INTERVAL_MS = 1_000;
 const VERBOSE_KEY = 'codex.tasks.verbose';
+
+function shouldScanLocation(location: Location): boolean {
+  const normalizedPath = normalizePathname(location?.pathname ?? '/');
+  return isCodexTasksListingPath(normalizedPath);
+}
+
+function createIdleSnapshot(ts: number): TaskActivitySnapshot {
+  return {
+    active: false,
+    count: 0,
+    signals: [],
+    ts,
+  };
+}
 
 export interface ContentScriptOptions {
   readonly window: Window;
@@ -44,6 +59,7 @@ export class ContentScriptRuntime {
   private lastScanAt = 0;
   private isDestroyed = false;
   private verbose = false;
+  private supportsScanning: boolean | undefined;
 
   constructor(options: ContentScriptOptions) {
     this.window = options.window;
@@ -170,7 +186,21 @@ export class ContentScriptRuntime {
       return;
     }
     this.lastScanAt = now;
-    const snapshot = this.scanner.scan(now);
+    const supportsScanning = shouldScanLocation(this.window.location);
+    if (supportsScanning !== this.supportsScanning) {
+      this.logger.debug('location support changed', {
+        supportsScanning,
+        href: this.window.location.href,
+      });
+      if (supportsScanning) {
+        this.scanner.reset();
+      }
+      this.supportsScanning = supportsScanning;
+    }
+
+    const snapshot = supportsScanning
+      ? this.scanner.scan(now)
+      : createIdleSnapshot(now);
     this.lastSnapshot = snapshot;
     await this.dispatchSnapshot(snapshot);
   }

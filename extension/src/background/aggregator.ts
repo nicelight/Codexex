@@ -15,6 +15,7 @@ import {
   type ChromeLogger,
 } from '../shared/chrome';
 import { getSessionStateKey } from '../shared/storage';
+import { canonicalizeCodexUrl } from '../shared/url';
 
 const DEFAULT_DEBOUNCE_MS = 12_000;
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 15_000;
@@ -550,7 +551,26 @@ function cloneState(state: AggregatedTabsState): AggregatedTabsState {
 }
 
 function sumCounts(tabs: Record<string, AggregatedTabState>): number {
-  return Object.values(tabs).reduce((total, tab) => total + tab.count, 0);
+  const grouped = new Map<string, number>();
+  for (const [tabId, tab] of Object.entries(tabs)) {
+    const key = createAggregationGroupKey(tab, tabId);
+    const previous = grouped.get(key) ?? 0;
+    const next = tab.count > previous ? tab.count : previous;
+    grouped.set(key, next);
+  }
+  let total = 0;
+  for (const count of grouped.values()) {
+    total += count;
+  }
+  return total;
+}
+
+function createAggregationGroupKey(tab: AggregatedTabState, tabId: string): string {
+  const canonical = canonicalizeCodexUrl(tab.origin);
+  if (canonical?.isTasksListing) {
+    return `listing:${canonical.canonical}`;
+  }
+  return `tab:${tabId}`;
 }
 
 function areAllCountsZero(tabs: Record<string, AggregatedTabState>): boolean {

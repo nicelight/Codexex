@@ -55,6 +55,38 @@ describe('BackgroundAggregator', () => {
     expect(storedState).toMatchObject({ lastTotal: 2 });
   });
 
+  it('deduplicates counts reported by multiple listing tabs', async () => {
+    const aggregator = initializeAggregator({ chrome: chromeMock });
+    await aggregator.ready;
+
+    const baseMessage: ContentScriptTasksUpdate = {
+      type: 'TASKS_UPDATE',
+      origin: 'https://chatgpt.com/codex',
+      active: true,
+      count: 1,
+      signals: [
+        { detector: 'D2_STOP_BUTTON', evidence: 'Stop button visible', taskKey: 'stop:1' },
+      ],
+      ts: 1_000,
+    };
+
+    const firstSender = { tab: { id: 2, title: 'Codex – Tasks' } } as chrome.runtime.MessageSender;
+    await aggregator.handleTasksUpdate(baseMessage, firstSender);
+
+    const secondSender = { tab: { id: 3, title: 'Codex – Tasks' } } as chrome.runtime.MessageSender;
+    const secondaryMessage: ContentScriptTasksUpdate = {
+      ...baseMessage,
+      origin: 'https://chatgpt.com/codex?view=active',
+      ts: 1_500,
+    };
+    await aggregator.handleTasksUpdate(secondaryMessage, secondSender);
+
+    const snapshot = await aggregator.getSnapshot();
+    expect(snapshot.lastTotal).toBe(1);
+    expect(snapshot.tabs['2'].count).toBe(1);
+    expect(snapshot.tabs['3'].count).toBe(1);
+  });
+
   it('resets heartbeat status on TASKS_HEARTBEAT', async () => {
     let currentTime = 0;
     const aggregator = initializeAggregator({ chrome: chromeMock, now: () => currentTime });
