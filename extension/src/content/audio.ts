@@ -21,18 +21,19 @@ export class ContentAudioController {
   private pending = false;
   private unlocked = false;
   private initialized = false;
+  private unlockListenersAttached = false;
+  private readonly unlockEventHandler: () => void;
   private volume = DEFAULT_VOLUME;
   private enabled = true;
 
   constructor(options: ContentAudioControllerOptions) {
     this.window = options.window;
     this.logger = createChildLogger(options.logger, 'audio');
-    this.window.addEventListener('pointerdown', () => {
+    this.unlockEventHandler = () => {
+      this.detachUnlockListeners();
       void this.unlock();
-    }, { once: true, capture: true });
-    this.window.addEventListener('keydown', () => {
-      void this.unlock();
-    }, { once: true, capture: true });
+    };
+    this.attachUnlockListeners();
   }
 
   public async ensureInitialized(): Promise<void> {
@@ -40,11 +41,16 @@ export class ContentAudioController {
       return;
     }
     this.initialized = true;
-    await this.unlock();
+    this.attachUnlockListeners();
   }
 
   private async unlock(): Promise<void> {
-    if (typeof this.window.AudioContext === 'undefined' || this.unlocked) {
+    this.detachUnlockListeners();
+    if (typeof this.window.AudioContext === 'undefined') {
+      return;
+    }
+    if (this.unlocked) {
+      await this.resumeContextIfNeeded();
       return;
     }
     try {
@@ -53,9 +59,8 @@ export class ContentAudioController {
       this.gainNode.gain.value = 0;
       this.gainNode.connect(this.audioContext.destination);
       this.unlocked = true;
-      if (this.audioContext.state === 'suspended') {
-        await this.audioContext.resume();
-      }
+      this.unlockListenersAttached = false;
+      await this.resumeContextIfNeeded();
       if (this.pending) {
         this.pending = false;
         await this.ensureAudioBuffer();
@@ -63,6 +68,7 @@ export class ContentAudioController {
       }
     } catch (error) {
       this.logger.warn('audio unlock failed', error);
+      this.attachUnlockListeners();
     }
   }
 
@@ -82,10 +88,43 @@ export class ContentAudioController {
     }
     if (!this.unlocked) {
       this.pending = true;
+      this.attachUnlockListeners();
       return;
     }
+    await this.resumeContextIfNeeded();
     await this.ensureAudioBuffer();
     await this.playChime(volumeOverride);
+  }
+
+  private attachUnlockListeners(): void {
+    if (this.unlocked || this.unlockListenersAttached) {
+      return;
+    }
+    this.unlockListenersAttached = true;
+    this.window.addEventListener('pointerdown', this.unlockEventHandler, { capture: true });
+    this.window.addEventListener('keydown', this.unlockEventHandler, { capture: true });
+  }
+
+  private detachUnlockListeners(): void {
+    if (!this.unlockListenersAttached) {
+      return;
+    }
+    this.window.removeEventListener('pointerdown', this.unlockEventHandler, true);
+    this.window.removeEventListener('keydown', this.unlockEventHandler, true);
+    this.unlockListenersAttached = false;
+  }
+
+  private async resumeContextIfNeeded(): Promise<void> {
+    if (!this.audioContext) {
+      return;
+    }
+    if (this.audioContext.state === 'suspended') {
+      try {
+        await this.audioContext.resume();
+      } catch (error) {
+        this.logger.debug('audio resume failed', error);
+      }
+    }
   }
 
   private async ensureAudioBuffer(): Promise<void> {

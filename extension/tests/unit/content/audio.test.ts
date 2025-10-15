@@ -72,10 +72,25 @@ describe("ContentAudioController", () => {
     await controller.handleChimeRequest();
 
     await (controller as any).unlock?.();
-    await controller.ensureInitialized();
     await controller.handleChimeRequest();
 
     const contextInstance = (controller as any).audioContext as FakeAudioContext;
     expect(contextInstance.createOscillator).toHaveBeenCalled();
+  });
+
+  test("resumes suspended context before playback", async () => {
+    const controller = new ContentAudioController({
+      window,
+      logger: console,
+    } as any);
+
+    await (controller as any).unlock?.();
+
+    const contextInstance = (controller as any).audioContext as FakeAudioContext;
+    contextInstance.state = "suspended";
+
+    await controller.handleChimeRequest();
+
+    expect(contextInstance.resume).toHaveBeenCalled();
   });
 });
