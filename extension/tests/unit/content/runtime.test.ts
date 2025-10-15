@@ -160,6 +160,39 @@ describe('content runtime', () => {
     runtime.destroy();
   });
 
+  it('emits zero update immediately when location stops supporting scanning', async () => {
+    const runtime = new ContentScriptRuntime({ window });
+    await runtime.start();
+
+    document.body.innerHTML = '<div aria-busy="true"></div>';
+    await flushMicrotasks();
+    chromeMock!.__events.runtime.onMessage.emit(
+      { type: 'PING' },
+      { tab: { id: 1 } } as chrome.runtime.MessageSender,
+      () => undefined,
+    );
+    await flushMicrotasks();
+
+    const baselineMessages = chromeMock!.__messages.length;
+
+    window.location.href = 'https://chatgpt.com/not-codex';
+    document.body.innerHTML = '';
+    await flushMicrotasks();
+
+    chromeMock!.__events.runtime.onMessage.emit(
+      { type: 'PING' },
+      { tab: { id: 1 } } as chrome.runtime.MessageSender,
+      () => undefined,
+    );
+    await flushMicrotasks();
+
+    const newMessages = chromeMock!.__messages.slice(baselineMessages);
+    const zeroUpdate = findLastTasksUpdate(newMessages, (message) => message.count === 0);
+    expect(zeroUpdate).toBeDefined();
+
+    runtime.destroy();
+  });
+
   it('scans task details page for activity counters', async () => {
     setWindowLocation('https://chatgpt.com/codex/tasks/task_123');
     const runtime = new ContentScriptRuntime({ window });

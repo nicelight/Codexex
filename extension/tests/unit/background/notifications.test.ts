@@ -31,7 +31,7 @@ describe('background notifications', () => {
     const sender = { tab: { id: 1, title: 'Codex' } } as chrome.runtime.MessageSender;
     const makeUpdate = (count: number, ts: number): ContentScriptTasksUpdate => ({
       type: 'TASKS_UPDATE',
-      origin: 'https://codex.openai.com',
+      origin: 'https://chatgpt.com/codex',
       active: count > 0,
       count,
       signals: [],
@@ -65,7 +65,7 @@ describe('background notifications', () => {
     const sender = { tab: { id: 5, title: 'Codex' } } as chrome.runtime.MessageSender;
     const makeUpdate = (count: number, ts: number): ContentScriptTasksUpdate => ({
       type: 'TASKS_UPDATE',
-      origin: 'https://codex.openai.com',
+      origin: 'https://chatgpt.com/codex',
       active: count > 0,
       count,
       signals: [],
@@ -98,7 +98,7 @@ describe('background notifications', () => {
     const sender = { tab: { id: 9, title: 'Codex' } } as chrome.runtime.MessageSender;
     const makeUpdate = (count: number, ts: number): ContentScriptTasksUpdate => ({
       type: 'TASKS_UPDATE',
-      origin: 'https://codex.openai.com',
+      origin: 'https://chatgpt.com/codex',
       active: count > 0,
       count,
       signals: [],
@@ -138,7 +138,7 @@ describe('background notifications', () => {
     const sender = { tab: { id: 11, title: 'Codex' } } as chrome.runtime.MessageSender;
     const makeUpdate = (count: number, ts: number): ContentScriptTasksUpdate => ({
       type: 'TASKS_UPDATE',
-      origin: 'https://codex.openai.com',
+      origin: 'https://chatgpt.com/codex',
       active: count > 0,
       count,
       signals: [],

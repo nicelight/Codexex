@@ -187,7 +187,8 @@ export class ContentScriptRuntime {
     }
     this.lastScanAt = now;
     const supportsScanning = shouldScanLocation(this.window.location);
-    if (supportsScanning !== this.supportsScanning) {
+    const previousSupportsScanning = this.supportsScanning;
+    if (supportsScanning !== previousSupportsScanning) {
       this.logger.debug('location support changed', {
         supportsScanning,
         href: this.window.location.href,
@@ -202,19 +203,29 @@ export class ContentScriptRuntime {
       ? this.scanner.scan(now)
       : createIdleSnapshot(now);
     this.lastSnapshot = snapshot;
-    await this.dispatchSnapshot(snapshot);
+    const bypassZeroDebounce = previousSupportsScanning === true && supportsScanning === false;
+    await this.dispatchSnapshot(snapshot, { bypassZeroDebounce });
   }
 
-  private async dispatchSnapshot(snapshot: TaskActivitySnapshot): Promise<void> {
+  private async dispatchSnapshot(
+    snapshot: TaskActivitySnapshot,
+    options: { bypassZeroDebounce?: boolean } = {},
+  ): Promise<void> {
     if (this.isDestroyed) {
       return;
     }
+    const bypassZeroDebounce = options.bypassZeroDebounce ?? false;
     if (snapshot.count === 0 && !snapshot.active) {
       if (this.lastSentSnapshot && this.lastSentSnapshot.count === 0) {
         return;
       }
       if (this.zeroTimer) {
         clearTimeout(this.zeroTimer);
+      }
+      if (bypassZeroDebounce) {
+        this.zeroTimer = undefined;
+        await this.sendUpdate(snapshot);
+        return;
       }
       this.zeroTimer = setTimeout(() => {
         this.zeroTimer = undefined;

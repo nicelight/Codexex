@@ -59,6 +59,7 @@ export class ChromeEventEmitter<Listener extends (...args: any[]) => unknown>
 
 export interface ChromeLike {
   runtime: {
+    id?: string;
     sendMessage: typeof chrome.runtime.sendMessage;
     connect: typeof chrome.runtime.connect;
     onMessage: ChromeEventLike<RuntimeMessageListener>;
@@ -305,6 +306,7 @@ export function createMockChrome(overrides?: Partial<ChromeLike>): ChromeMock {
 
   const base: ChromeMock = {
     runtime: {
+      id: 'mock-extension',
       sendMessage: withSpy(createCallbackInvoker()) as typeof chrome.runtime.sendMessage,
       connect: withSpy((() => createPortMock()) as typeof chrome.runtime.connect),
       onMessage: runtimeOnMessage.event,

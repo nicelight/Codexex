@@ -36,7 +36,7 @@ describe('popup rendering', () => {
         {
           tabId: 2,
           title: 'Review PR',
-          origin: 'https://codex.openai.com/review',
+          origin: 'https://chatgpt.com/codex/review',
           count: 3,
           lastSeenAt: 1_700_000,
           heartbeatStatus: 'STALE',
@@ -47,7 +47,7 @@ describe('popup rendering', () => {
         {
           tabId: 1,
           title: 'Build tasks',
-          origin: 'https://codex.openai.com/tasks',
+          origin: 'https://chatgpt.com/codex/tasks',
           count: 2,
           lastSeenAt: 1_600_000,
           heartbeatStatus: 'OK',

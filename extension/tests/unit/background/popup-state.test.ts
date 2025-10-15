@@ -21,7 +21,7 @@ describe('generatePopupRenderState', () => {
     const snapshot = {
       tabs: {
         '10': {
-          origin: 'https://codex.openai.com/work',
+          origin: 'https://chatgpt.com/codex/work',
           title: 'Work tab',
           count: 1,
           active: true,
@@ -38,7 +38,7 @@ describe('generatePopupRenderState', () => {
           ],
         },
         '4': {
-          origin: 'https://codex.openai.com/review',
+          origin: 'https://chatgpt.com/codex/review',
           title: 'Review tab',
           count: 3,
           active: true,
@@ -83,7 +83,7 @@ describe('generatePopupRenderState', () => {
     const snapshot = {
       tabs: {
         '1': {
-          origin: 'https://codex.openai.com/codex',
+          origin: 'https://chatgpt.com/codex/codex',
           title: 'Listing copy',
           count: 4,
           active: true,
@@ -97,7 +97,7 @@ describe('generatePopupRenderState', () => {
           },
         },
         '2': {
-          origin: 'https://codex.openai.com/codex?tab=duplicate',
+          origin: 'https://chatgpt.com/codex/codex?tab=duplicate',
           title: 'Listing duplicate',
           count: 4,
           active: true,

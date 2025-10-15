@@ -61,7 +61,7 @@ describe('background message handler', () => {
     const logger = createLoggerMock();
     const message: ContentScriptTasksUpdate = {
       type: 'TASKS_UPDATE',
-      origin: 'https://codex.openai.com',
+      origin: 'https://chatgpt.com/codex',
       active: true,
       count: 1,
       signals: [],
@@ -78,7 +78,7 @@ describe('background message handler', () => {
     const logger = createLoggerMock();
     const message: ContentScriptHeartbeat = {
       type: 'TASKS_HEARTBEAT',
-      origin: 'https://codex.openai.com',
+      origin: 'https://chatgpt.com/codex',
       ts: 200,
       lastUpdateTs: 150,
       intervalMs: 15_000,
@@ -104,7 +104,7 @@ describe('background message handler', () => {
     const snapshot: AggregatedTabsState = {
       tabs: {
         '5': {
-          origin: 'https://codex.openai.com',
+          origin: 'https://chatgpt.com/codex',
           title: 'Codex Tasks',
           count: 2,
           active: true,

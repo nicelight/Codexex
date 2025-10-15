@@ -123,8 +123,29 @@ class BackgroundAggregatorImpl implements BackgroundAggregator {
       'tasks-update',
       (next, previous) => {
         const tabKey = String(tabId);
-        const tabTitle = this.resolveTitle(sender, message.origin);
         const hadExisting = Object.prototype.hasOwnProperty.call(previous?.tabs ?? {}, tabKey);
+        const canonical = canonicalizeCodexUrl(message.origin);
+        const supportsAggregation = Boolean(canonical?.isTasksListing || canonical?.isTaskDetails);
+        if (!supportsAggregation) {
+          let mutated = false;
+          if (tabKey in next.tabs) {
+            delete next.tabs[tabKey];
+            mutated = true;
+          }
+          const nextTotal = deriveAggregatedTotal(next.tabs);
+          if (next.lastTotal !== nextTotal) {
+            next.lastTotal = nextTotal;
+            mutated = true;
+          }
+          const previousTotal = previous?.lastTotal ?? 0;
+          mutated = this.applyDebounceTransition(next, previousTotal) || mutated;
+          if (nextTotal === 0 && next.debounce.since !== 0 && areAllCountsZero(next.tabs)) {
+            next.debounce.since = 0;
+            mutated = true;
+          }
+          return mutated;
+        }
+        const tabTitle = this.resolveTitle(sender, message.origin);
         const existing =
           next.tabs[tabKey] ?? this.createTabState(message.origin, tabTitle, message.ts);
         let mutated = !hadExisting;
@@ -204,10 +225,31 @@ class BackgroundAggregatorImpl implements BackgroundAggregator {
       'heartbeat',
       (next, previous) => {
         const tabKey = String(tabId);
+        const hadExisting = Object.prototype.hasOwnProperty.call(previous?.tabs ?? {}, tabKey);
+        const canonical = canonicalizeCodexUrl(message.origin);
+        const supportsAggregation = Boolean(canonical?.isTasksListing || canonical?.isTaskDetails);
+        if (!supportsAggregation) {
+          let mutated = false;
+          if (tabKey in next.tabs) {
+            delete next.tabs[tabKey];
+            mutated = true;
+          }
+          const nextTotal = deriveAggregatedTotal(next.tabs);
+          if (next.lastTotal !== nextTotal) {
+            next.lastTotal = nextTotal;
+            mutated = true;
+          }
+          const previousTotal = previous?.lastTotal ?? 0;
+          mutated = this.applyDebounceTransition(next, previousTotal) || mutated;
+          if (nextTotal === 0 && next.debounce.since !== 0 && areAllCountsZero(next.tabs)) {
+            next.debounce.since = 0;
+            mutated = true;
+          }
+          return mutated;
+        }
         const tabTitle = this.resolveTitle(sender, message.origin);
         const heartbeatTs = Math.max(0, message.ts);
         const updateTs = Math.max(heartbeatTs, message.lastUpdateTs);
-        const hadExisting = Object.prototype.hasOwnProperty.call(previous?.tabs ?? {}, tabKey);
         const existing =
           next.tabs[tabKey] ?? this.createTabState(message.origin, tabTitle, updateTs);
         let mutated = !hadExisting;
