@@ -29,7 +29,7 @@ describe('background alarms', () => {
     const state: AggregatedTabsState = {
       tabs: {
         '5': {
-          origin: 'https://codex.openai.com',
+          origin: 'https://chatgpt.com/codex',
           title: 'Codex',
           count: 1,
           active: true,
@@ -68,7 +68,7 @@ describe('background alarms', () => {
     const state: AggregatedTabsState = {
       tabs: {
         '7': {
-          origin: 'https://codex.openai.com',
+          origin: 'https://chatgpt.com/codex',
           title: 'Codex',
           count: 0,
           active: false,

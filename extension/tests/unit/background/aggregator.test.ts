@@ -29,7 +29,7 @@ describe('BackgroundAggregator', () => {
 
     const message: ContentScriptTasksUpdate = {
       type: 'TASKS_UPDATE',
-      origin: 'https://codex.openai.com/tab',
+      origin: 'https://chatgpt.com/codex',
       active: true,
       count: 2,
       signals: [
@@ -152,6 +152,75 @@ describe('BackgroundAggregator', () => {
     expect(snapshot.lastTotal).toBe(5);
   });
 
+  it('removes tab state when tasks update originates outside Codex', async () => {
+    const aggregator = initializeAggregator({ chrome: chromeMock });
+    await aggregator.ready;
+
+    const sender = { tab: { id: 12, title: 'Codex – Tasks' } } as chrome.runtime.MessageSender;
+    const codexMessage: ContentScriptTasksUpdate = {
+      type: 'TASKS_UPDATE',
+      origin: 'https://chatgpt.com/codex',
+      active: true,
+      count: 1,
+      signals: [
+        { detector: 'D2_STOP_BUTTON', evidence: 'Stop button visible', taskKey: 'stop:1' },
+      ],
+      ts: 1_000,
+    };
+
+    await aggregator.handleTasksUpdate(codexMessage, sender);
+    expect((await aggregator.getSnapshot()).tabs['12']).toBeDefined();
+
+    const nonCodexMessage: ContentScriptTasksUpdate = {
+      ...codexMessage,
+      origin: 'https://chatgpt.com/profile',
+      active: false,
+      count: 0,
+      signals: [],
+      ts: 2_000,
+    };
+
+    await aggregator.handleTasksUpdate(nonCodexMessage, sender);
+
+    const snapshot = await aggregator.getSnapshot();
+    expect(snapshot.tabs['12']).toBeUndefined();
+    expect(snapshot.lastTotal).toBe(0);
+  });
+
+  it('ignores heartbeats originating outside Codex', async () => {
+    const aggregator = initializeAggregator({ chrome: chromeMock });
+    await aggregator.ready;
+
+    const sender = { tab: { id: 13, title: 'Codex – Tasks' } } as chrome.runtime.MessageSender;
+    const codexMessage: ContentScriptTasksUpdate = {
+      type: 'TASKS_UPDATE',
+      origin: 'https://chatgpt.com/codex',
+      active: true,
+      count: 1,
+      signals: [
+        { detector: 'D2_STOP_BUTTON', evidence: 'Stop button visible', taskKey: 'stop:1' },
+      ],
+      ts: 1_000,
+    };
+
+    await aggregator.handleTasksUpdate(codexMessage, sender);
+    expect((await aggregator.getSnapshot()).tabs['13']).toBeDefined();
+
+    const nonCodexHeartbeat: ContentScriptHeartbeat = {
+      type: 'TASKS_HEARTBEAT',
+      origin: 'https://chatgpt.com/settings',
+      ts: 2_000,
+      lastUpdateTs: 2_000,
+      intervalMs: 15_000,
+    };
+
+    await aggregator.handleHeartbeat(nonCodexHeartbeat, sender);
+
+    const snapshot = await aggregator.getSnapshot();
+    expect(snapshot.tabs['13']).toBeUndefined();
+    expect(snapshot.lastTotal).toBe(0);
+  });
+
   it('recalculates aggregated total from stored state using canonical rules', async () => {
     const storageKey = getSessionStateKey();
     await chromeMock.storage.session.set({
@@ -224,7 +293,7 @@ describe('BackgroundAggregator', () => {
     const sender = { tab: { id: 3, title: 'Codex' } } as chrome.runtime.MessageSender;
     const updateMessage: ContentScriptTasksUpdate = {
       type: 'TASKS_UPDATE',
-      origin: 'https://codex.openai.com/tab',
+      origin: 'https://chatgpt.com/codex',
       active: false,
       count: 0,
       signals: [],
@@ -254,7 +323,7 @@ describe('BackgroundAggregator', () => {
     const sender = { tab: { id: 11, title: 'Codex' } } as chrome.runtime.MessageSender;
     const heartbeat: ContentScriptHeartbeat = {
       type: 'TASKS_HEARTBEAT',
-      origin: 'https://codex.openai.com',
+      origin: 'https://chatgpt.com/codex',
       ts: 0,
       lastUpdateTs: 0,
       intervalMs: 10_000,
@@ -278,7 +347,7 @@ describe('BackgroundAggregator', () => {
     const sender = { tab: { id: 9, title: 'Codex' } } as chrome.runtime.MessageSender;
     const activeMessage: ContentScriptTasksUpdate = {
       type: 'TASKS_UPDATE',
-      origin: 'https://codex.openai.com/tab',
+      origin: 'https://chatgpt.com/codex',
       active: true,
       count: 1,
       signals: [],
@@ -315,7 +384,7 @@ describe('BackgroundAggregator', () => {
 
     const message: ContentScriptTasksUpdate = {
       type: 'TASKS_UPDATE',
-      origin: 'https://codex.openai.com',
+      origin: 'https://chatgpt.com/codex',
       active: false,
       count: 0,
       signals: [],
@@ -333,7 +402,7 @@ describe('BackgroundAggregator', () => {
 
     const message: ContentScriptTasksUpdate = {
       type: 'TASKS_UPDATE',
-      origin: 'https://codex.openai.com',
+      origin: 'https://chatgpt.com/codex',
       active: true,
       count: 3,
       signals: [],
@@ -354,7 +423,7 @@ describe('BackgroundAggregator', () => {
     const invalidState = {
       tabs: {
         bad: {
-          origin: 'https://codex.openai.com',
+          origin: 'https://chatgpt.com/codex',
           title: 'Broken',
           count: -5,
           active: true,
@@ -419,7 +488,7 @@ describe('BackgroundAggregator', () => {
 
     const heartbeat: ContentScriptHeartbeat = {
       type: 'TASKS_HEARTBEAT',
-      origin: 'https://codex.openai.com',
+      origin: 'https://chatgpt.com/codex',
       ts: 1_000,
       lastUpdateTs: 800,
       intervalMs: 15_000,
