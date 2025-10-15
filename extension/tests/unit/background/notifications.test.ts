@@ -58,7 +58,7 @@ describe('background notifications', () => {
     controller.dispose();
   });
 
-  it('cancels notification timer when activity resumes', async () => {
+  it('does not spam notifications when activity resumes quickly', async () => {
     const aggregator = initializeAggregator({ chrome: chromeMock, now: () => currentTime });
     await aggregator.ready;
 
@@ -86,7 +86,7 @@ describe('background notifications', () => {
     await aggregator.handleTasksUpdate(makeUpdate(2, 2_000), sender);
 
     await vi.runOnlyPendingTimersAsync();
-    expect(createSpy).not.toHaveBeenCalled();
+    expect(createSpy).toHaveBeenCalledTimes(1);
 
     controller.dispose();
   });

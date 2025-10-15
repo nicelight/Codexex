@@ -53,8 +53,8 @@ export function initializeNotifications(
 
   let disposed = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let scheduledTarget = 0;
   let activeNotificationId: string | undefined;
+  let lastSnapshot: AggregatedTabsState | undefined;
 
   const unsubscribe = aggregator.onStateChange((event) => {
     if (disposed) {
@@ -79,7 +79,6 @@ export function initializeNotifications(
         clearTimeout(timer);
         timer = undefined;
       }
-      scheduledTarget = 0;
       unsubscribe();
     },
   };
@@ -88,6 +87,7 @@ export function initializeNotifications(
     if (disposed) {
       return;
     }
+    lastSnapshot = state;
     if (state.lastTotal > 0) {
       cancelTimer();
       await clearNotification();
@@ -101,21 +101,15 @@ export function initializeNotifications(
   }
 
   function scheduleTimer(state: AggregatedTabsState): void {
+    cancelTimer();
     const target = state.debounce.since + state.debounce.ms;
-    const current = now();
-    if (current >= target) {
+    const delay = Math.max(0, target - now());
+    if (delay === 0) {
       void triggerNotification();
       return;
     }
-    if (timer && scheduledTarget === target) {
-      return;
-    }
-    cancelTimer();
-    const delay = Math.max(0, target - current);
-    scheduledTarget = target;
     timer = setTimeout(() => {
       timer = undefined;
-      scheduledTarget = 0;
       void triggerNotification();
     }, delay);
     logger.debug('debounce timer scheduled', { delay, target });
@@ -126,28 +120,14 @@ export function initializeNotifications(
       clearTimeout(timer);
       timer = undefined;
     }
-    scheduledTarget = 0;
   }
 
   async function triggerNotification(): Promise<void> {
     if (disposed) {
       return;
     }
-    const snapshot = await aggregator.getSnapshot();
-    if (snapshot.debounce.since === 0) {
-      logger.debug('debounce window already cleared');
-      return;
-    }
-    const target = snapshot.debounce.since + snapshot.debounce.ms;
-    const current = now();
-    if (current < target) {
-      logger.debug('debounce window not ready yet');
-      scheduleTimer(snapshot);
-      return;
-    }
-    if (snapshot.lastTotal !== 0 || !allCountsZero(snapshot)) {
-      logger.info('activity detected during debounce, skipping notification');
-      cancelTimer();
+    if (!lastSnapshot || lastSnapshot.lastTotal > 0) {
+      logger.debug('skipping notification due to recent activity');
       return;
     }
     try {
@@ -164,7 +144,11 @@ export function initializeNotifications(
       logger.error('failed to create notification', error);
     } finally {
       cancelTimer();
-      await aggregator.clearDebounceIfIdle();
+      try {
+        await aggregator.clearDebounceIfIdle();
+      } catch (error) {
+        logger.warn('failed to clear debounce state', error);
+      }
     }
   }
 
@@ -180,8 +164,4 @@ export function initializeNotifications(
     }
     activeNotificationId = undefined;
   }
-}
-
-function allCountsZero(state: AggregatedTabsState): boolean {
-  return Object.values(state.tabs).every((tab) => tab.count === 0);
 }
