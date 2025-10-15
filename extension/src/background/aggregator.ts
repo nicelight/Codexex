@@ -576,7 +576,7 @@ function deriveAggregatedTotal(tabs: Record<string, AggregatedTabState>): number
     fallbackTotal += tab.count;
   }
 
-  if (!hasListing && hasTaskDetails) {
+  if (hasTaskDetails) {
     return taskDetailsCount;
   }
 
@@ -586,10 +586,6 @@ function deriveAggregatedTotal(tabs: Record<string, AggregatedTabState>): number
       total += count;
     }
     return total;
-  }
-
-  if (hasTaskDetails) {
-    return taskDetailsCount;
   }
 
   return fallbackTotal;
