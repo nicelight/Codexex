@@ -369,7 +369,7 @@ Background хранит `signals` в виде последнего снимка 
 {
   "manifest_version": 3,
   "name": "Codex Tasks Watcher",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "permissions": ["storage", "notifications", "alarms", "scripting", "tabs"],
   "host_permissions": ["https://*.openai.com/*", "https://*.chatgpt.com/*"],
   "background": { "service_worker": "src/bg.js" },

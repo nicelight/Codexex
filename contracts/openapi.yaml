@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Codex Tasks Watcher Internal API
-  version: 0.1.0
+  version: 0.1.1
   description: |
     Контракт взаимодействия компонентов расширения для целей тестирования и отладки.
     Реальные коммуникации выполняются через chrome.runtime messaging, однако для contract-тестов
