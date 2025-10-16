@@ -9,7 +9,7 @@
 
 
 <p align="center">
-  <a href="https://github.com/nicelight/Codexex/releases/tag/v0.1.0">
+  <a href="https://github.com/nicelight/Codexex/releases/tag/v0.1.1">
     <img alt="logo" src="https://img.shields.io/badge/Codex-Tasks%20Watcher-8A2BE2?style=for-the-badge&logo=google-chrome&logoColor=white">
   </a>
   <a href="https://github.com/nicelight/Codexex/blob/main/dist/manifest.json">
@@ -47,7 +47,7 @@ flowchart LR
 
 ## Быстрый старт
 ### Либо скачать вручную
-1. [Забираем архив из Релизов](https://github.com/nicelight/Codexex/releases/tag/v0.1.0)
+1. [Забираем архив из Релизов](https://github.com/nicelight/Codexex/releases/tag/v0.1.1)
 2. Распаковываем и добавляем в расширения Хрома.
 3. 
 ### Либо клон репозитория 
