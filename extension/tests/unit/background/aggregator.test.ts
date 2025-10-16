@@ -221,6 +221,71 @@ describe('BackgroundAggregator', () => {
     expect(snapshot.lastTotal).toBe(0);
   });
 
+  it('skips navigation cleanup for untracked tabs without touching storage', async () => {
+    const aggregator = initializeAggregator({ chrome: chromeMock });
+    await aggregator.ready;
+
+    const setSpy = vi.spyOn(chromeMock.storage.session, 'set');
+    try {
+      await aggregator.handleTabNavigated(42);
+      expect(setSpy).not.toHaveBeenCalled();
+    } finally {
+      setSpy.mockRestore();
+    }
+
+    const snapshot = await aggregator.getSnapshot();
+    expect(snapshot.tabs['42']).toBeUndefined();
+  });
+
+  it('skips removal cleanup for untracked tabs without touching storage', async () => {
+    const aggregator = initializeAggregator({ chrome: chromeMock });
+    await aggregator.ready;
+
+    const setSpy = vi.spyOn(chromeMock.storage.session, 'set');
+    try {
+      await aggregator.handleTabRemoved(101);
+      expect(setSpy).not.toHaveBeenCalled();
+    } finally {
+      setSpy.mockRestore();
+    }
+
+    const snapshot = await aggregator.getSnapshot();
+    expect(snapshot.tabs['101']).toBeUndefined();
+  });
+
+  it('drops tracked tab state on navigation events', async () => {
+    const aggregator = initializeAggregator({ chrome: chromeMock });
+    await aggregator.ready;
+
+    const setSpy = vi.spyOn(chromeMock.storage.session, 'set');
+    try {
+      const sender = { tab: { id: 88, title: 'Codex – Tasks' } } as chrome.runtime.MessageSender;
+      const message: ContentScriptTasksUpdate = {
+        type: 'TASKS_UPDATE',
+        origin: 'https://chatgpt.com/codex',
+        active: true,
+        count: 1,
+        signals: [
+          { detector: 'D2_STOP_BUTTON', evidence: 'stop-button', taskKey: 'stop:1' },
+        ],
+        ts: 3_000,
+      };
+
+      await aggregator.handleTasksUpdate(message, sender);
+      expect((await aggregator.getSnapshot()).tabs['88']).toBeDefined();
+
+      setSpy.mockClear();
+
+      await aggregator.handleTabNavigated(88);
+
+      expect(setSpy).toHaveBeenCalledTimes(1);
+      const snapshot = await aggregator.getSnapshot();
+      expect(snapshot.tabs['88']).toBeUndefined();
+    } finally {
+      setSpy.mockRestore();
+    }
+  });
+
   it('recalculates aggregated total from stored state using canonical rules', async () => {
     const storageKey = getSessionStateKey();
     await chromeMock.storage.session.set({

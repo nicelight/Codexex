@@ -36,6 +36,7 @@ export type AggregatorEventReason =
   | 'tasks-update'
   | 'heartbeat'
   | 'tab-removed'
+  | 'tab-navigated'
   | 'heartbeat-stale'
   | 'debounce-cleared';
 
@@ -67,6 +68,7 @@ export interface BackgroundAggregator {
     sender: chrome.runtime.MessageSender,
   ): Promise<void>;
   handleTabRemoved(tabId: number): Promise<void>;
+  handleTabNavigated(tabId: number): Promise<void>;
   evaluateHeartbeatStatuses(): Promise<number[]>;
   clearDebounceIfIdle(): Promise<boolean>;
 }
@@ -299,29 +301,18 @@ class BackgroundAggregatorImpl implements BackgroundAggregator {
 
   async handleTabRemoved(tabId: number): Promise<void> {
     await this.ready;
-    await this.updateState(
-      'tab-removed',
-      (next) => {
-        const tabKey = String(tabId);
-        if (!(tabKey in next.tabs)) {
-          return false;
-        }
-        delete next.tabs[tabKey];
-        const nextTotal = deriveAggregatedTotal(next.tabs);
-        let mutated = false;
-        if (next.lastTotal !== nextTotal) {
-          next.lastTotal = nextTotal;
-          mutated = true;
-        }
-        if (nextTotal === 0 && next.debounce.since !== 0) {
-          next.debounce.since = 0;
-          mutated = true;
-        }
-        return true;
-      },
-      { tabId },
-    );
-    this.logger.info('tab removed', { tabId });
+    if (!Object.prototype.hasOwnProperty.call(this.state.tabs, String(tabId))) {
+      return;
+    }
+    await this.dropTabState(tabId, 'tab-removed', 'tab removed');
+  }
+
+  async handleTabNavigated(tabId: number): Promise<void> {
+    await this.ready;
+    if (!Object.prototype.hasOwnProperty.call(this.state.tabs, String(tabId))) {
+      return;
+    }
+    await this.dropTabState(tabId, 'tab-navigated', 'tab navigated away');
   }
 
   async evaluateHeartbeatStatuses(): Promise<number[]> {
@@ -373,6 +364,42 @@ class BackgroundAggregatorImpl implements BackgroundAggregator {
       this.logger.info('debounce window cleared');
     }
     return cleared;
+  }
+
+  private async dropTabState(
+    tabId: number,
+    reason: Extract<AggregatorEventReason, 'tab-removed' | 'tab-navigated'>,
+    logMessage: string,
+  ): Promise<void> {
+    await this.ready;
+    let removed = false;
+    await this.updateState(
+      reason,
+      (next, previous) => {
+        const tabKey = String(tabId);
+        if (!(tabKey in next.tabs)) {
+          return false;
+        }
+        removed = true;
+        delete next.tabs[tabKey];
+        const nextTotal = deriveAggregatedTotal(next.tabs);
+        if (next.lastTotal !== nextTotal) {
+          next.lastTotal = nextTotal;
+        }
+        const previousTotal = previous?.lastTotal ?? 0;
+        this.applyDebounceTransition(next, previousTotal);
+        if (nextTotal === 0 && next.debounce.since !== 0 && areAllCountsZero(next.tabs)) {
+          next.debounce.since = 0;
+        }
+        return true;
+      },
+      { tabId },
+    );
+    if (removed) {
+      this.logger.info(logMessage, { tabId });
+      return;
+    }
+    this.logger.debug('dropTabState skipped for untracked tab', { tabId, reason });
   }
 
   private async loadInitialState(): Promise<void> {
