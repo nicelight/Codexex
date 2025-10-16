@@ -15,6 +15,7 @@ import { initializeAudioTrigger } from './audio-trigger';
 import { generatePopupRenderState } from './popup-state';
 import { registerAlarms } from './alarms';
 import { initializeNotifications } from './notifications';
+import { canonicalizeCodexUrl } from '../shared/url';
 
 const VERBOSE_KEY = 'codex.tasks.verbose';
 
@@ -50,6 +51,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 chrome.tabs.onRemoved.addListener((tabId) => {
   void aggregator.handleTabRemoved(tabId).catch((error) => {
     rootLogger.error('tab removal handling failed', { tabId, error });
+  });
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (!changeInfo.url) {
+    return;
+  }
+  const canonical = canonicalizeCodexUrl(changeInfo.url);
+  if (canonical?.isTasksListing || canonical?.isTaskDetails) {
+    return;
+  }
+  void aggregator.handleTabNavigated(tabId).catch((error) => {
+    rootLogger.error('tab navigation handling failed', { tabId, error });
   });
 });
 

@@ -118,6 +118,7 @@ function createAggregatorStub(initial: AggregatedTabsState): AggregatorStub {
     handleTasksUpdate: vi.fn(async () => undefined),
     handleHeartbeat: vi.fn(async () => undefined),
     handleTabRemoved: vi.fn(async () => undefined),
+    handleTabNavigated: vi.fn(async () => undefined),
     evaluateHeartbeatStatuses: vi.fn(async () => [] as number[]),
     clearDebounceIfIdle: vi.fn(async () => false),
     emit(event) {

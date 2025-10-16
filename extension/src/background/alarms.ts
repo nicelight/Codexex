@@ -38,7 +38,10 @@ export function registerAlarms(
     void ensureAutoDiscardable(event.current).catch((error) => {
       logger.warn('failed to enforce autoDiscardable', error);
     });
-    if (event.reason === 'tab-removed' && typeof event.tabId === 'number') {
+    if (
+      (event.reason === 'tab-removed' || event.reason === 'tab-navigated') &&
+      typeof event.tabId === 'number'
+    ) {
       protectedTabs.delete(event.tabId);
     }
   });
