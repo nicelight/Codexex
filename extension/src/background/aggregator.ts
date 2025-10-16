@@ -301,17 +301,11 @@ class BackgroundAggregatorImpl implements BackgroundAggregator {
 
   async handleTabRemoved(tabId: number): Promise<void> {
     await this.ready;
-    if (!Object.prototype.hasOwnProperty.call(this.state.tabs, String(tabId))) {
-      return;
-    }
     await this.dropTabState(tabId, 'tab-removed', 'tab removed');
   }
 
   async handleTabNavigated(tabId: number): Promise<void> {
     await this.ready;
-    if (!Object.prototype.hasOwnProperty.call(this.state.tabs, String(tabId))) {
-      return;
-    }
     await this.dropTabState(tabId, 'tab-navigated', 'tab navigated away');
   }
 
@@ -372,11 +366,15 @@ class BackgroundAggregatorImpl implements BackgroundAggregator {
     logMessage: string,
   ): Promise<void> {
     await this.ready;
+    const tabKey = String(tabId);
+    if (!Object.prototype.hasOwnProperty.call(this.state.tabs, tabKey)) {
+      this.logger.debug('dropTabState skipped for untracked tab', { tabId, reason });
+      return;
+    }
     let removed = false;
     await this.updateState(
       reason,
       (next, previous) => {
-        const tabKey = String(tabId);
         if (!(tabKey in next.tabs)) {
           return false;
         }
