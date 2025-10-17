@@ -200,21 +200,37 @@ function createInMemoryStorageArea(
   }
 
   return {
-    async get(keys?: string | string[] | Record<string, unknown> | null) {
+    get: ((
+      keysOrCallback?:
+        | string
+        | string[]
+        | Record<string, unknown>
+        | null
+        | ((items: Record<string, unknown>) => void),
+      maybeCallback?: (items: Record<string, unknown>) => void,
+    ) => {
+      const callback =
+        typeof keysOrCallback === 'function' ? keysOrCallback : maybeCallback;
+      const keys =
+        typeof keysOrCallback === 'function' ? undefined : keysOrCallback;
       const result: Record<string, unknown> = {};
-      if (keys && typeof keys === 'object' && !Array.isArray(keys) && keys !== null) {
+      if (keys && typeof keys === 'object' && !Array.isArray(keys)) {
         for (const [key, defaultValue] of Object.entries(keys)) {
           result[key] = store.has(key) ? store.get(key) : defaultValue;
         }
-        return result;
-      }
-      for (const key of resolveGetKeys(keys)) {
-        if (store.has(key)) {
-          result[key] = store.get(key);
+      } else {
+        for (const key of resolveGetKeys(keys)) {
+          if (store.has(key)) {
+            result[key] = store.get(key);
+          }
         }
       }
-      return result;
-    },
+      if (callback) {
+        callback(result);
+        return;
+      }
+      return Promise.resolve(result);
+    }) as Pick<typeof chrome.storage.session, 'get'>['get'],
     async set(items: Record<string, unknown>) {
       const changes: Record<string, chrome.storage.StorageChange> = {};
       for (const [key, value] of Object.entries(items)) {
@@ -258,6 +274,13 @@ function mergeChromeLike(base: ChromeMock, overrides?: Partial<ChromeLike>): Chr
   if (!overrides) {
     return base;
   }
+  const baseAction = base.action;
+  const overrideAction = overrides.action;
+  const mergedAction: ChromeMock['action'] =
+    baseAction && overrideAction
+      ? { ...baseAction, ...overrideAction }
+      : overrideAction ?? baseAction;
+
   const result: ChromeMock = {
     ...base,
     runtime: { ...base.runtime, ...overrides.runtime },
@@ -269,7 +292,7 @@ function mergeChromeLike(base: ChromeMock, overrides?: Partial<ChromeLike>): Chr
     tabs: { ...base.tabs, ...overrides.tabs },
     alarms: { ...base.alarms, ...overrides.alarms },
     notifications: { ...base.notifications, ...overrides.notifications },
-    action: base.action || overrides.action ? { ...base.action, ...overrides.action } : base.action,
+    action: mergedAction,
     scripting: overrides.scripting ?? base.scripting,
     i18n: overrides.i18n ?? base.i18n,
   };
@@ -370,7 +393,36 @@ export function createMockChrome(overrides?: Partial<ChromeLike>): ChromeMock {
       onAlarm: alarmsOnAlarm.event,
     },
     notifications: {
-      create: withSpy((async (id: string | undefined) => id ?? 'mock-notification') as typeof chrome.notifications.create),
+      create: withSpy(((
+        idOrOptions: string | chrome.notifications.NotificationOptions,
+        optionsOrCallback?:
+          | chrome.notifications.NotificationOptions
+          | ((notificationId: string) => void),
+        maybeCallback?: (notificationId: string) => void,
+      ) => {
+        let notificationId: string | undefined;
+        let callback: ((notificationId: string) => void) | undefined;
+
+        if (typeof idOrOptions === 'string') {
+          notificationId = idOrOptions;
+          if (typeof optionsOrCallback === 'function') {
+            callback = optionsOrCallback;
+          } else if (typeof maybeCallback === 'function') {
+            callback = maybeCallback;
+          }
+        } else if (typeof optionsOrCallback === 'function') {
+          callback = optionsOrCallback;
+        } else if (typeof maybeCallback === 'function') {
+          callback = maybeCallback;
+        }
+
+        const resolvedId = notificationId ?? 'mock-notification';
+        if (callback) {
+          callback(resolvedId);
+          return;
+        }
+        return Promise.resolve(resolvedId);
+      }) as typeof chrome.notifications.create),
       clear: withSpy((async () => true) as typeof chrome.notifications.clear),
       update: withSpy((async () => true) as typeof chrome.notifications.update),
     },
@@ -612,15 +664,16 @@ export function debounce<T extends (...args: any[]) => unknown>(
 }
 
 let idleHandleCounter = 1;
-const idleHandleMap = new Map<number, ReturnType<typeof setTimeout>>();
+type TimeoutHandle = number | ReturnType<typeof globalThis.setTimeout>;
+const idleHandleMap = new Map<number, TimeoutHandle>();
 
 export type IdleCallbackHandle = number;
 
 export interface IdleCallbackGlobal {
   requestIdleCallback?: typeof globalThis.requestIdleCallback;
   cancelIdleCallback?: typeof globalThis.cancelIdleCallback;
-  setTimeout: typeof setTimeout;
-  clearTimeout: typeof clearTimeout;
+  setTimeout: (handler: TimerHandler, timeout?: number, ...args: unknown[]) => TimeoutHandle;
+  clearTimeout: (handle: TimeoutHandle | undefined) => void;
 }
 
 export function requestIdleCallbackPolyfill(

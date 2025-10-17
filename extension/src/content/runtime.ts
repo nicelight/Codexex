@@ -10,6 +10,7 @@ import {
   ensureRequestIdleCallback,
   resolveChrome,
   type ChromeLogger,
+  type IdleCallbackGlobal,
 } from '../shared/chrome';
 import { ActivityScanner, type TaskActivitySnapshot } from './activity-scanner';
 import { onBackgroundEvent, postToBackground } from './messaging';
@@ -20,6 +21,14 @@ const ZERO_DEBOUNCE_MS = 500;
 const HEARTBEAT_INTERVAL_MS = 15_000;
 const MIN_SCAN_INTERVAL_MS = 1_000;
 const VERBOSE_KEY = 'codex.tasks.verbose';
+
+type BackgroundEvent =
+  | { type: 'PING' }
+  | { type: 'RESET' }
+  | { type: 'REQUEST_STATE' }
+  | { type: 'AUDIO_CHIME'; volume?: number }
+  | { type: 'AUDIO_SETTINGS_UPDATE'; sound?: boolean; soundVolume?: number }
+  | { type: string; [key: string]: unknown };
 
 function shouldScanLocation(location: Location): boolean {
   const normalizedPath = normalizePathname(location?.pathname ?? '/');
@@ -62,7 +71,7 @@ export class ContentScriptRuntime {
 
   constructor(options: ContentScriptOptions) {
     this.window = options.window;
-    ensureRequestIdleCallback(this.window);
+    ensureRequestIdleCallback(this.window as unknown as IdleCallbackGlobal);
     this.verboseLogger = this.createVerbosityAwareLogger();
     this.logger = createChildLogger(this.verboseLogger, 'runtime');
     this.scanner = new ActivityScanner({
@@ -288,7 +297,7 @@ export class ContentScriptRuntime {
     }, HEARTBEAT_INTERVAL_MS);
   }
 
-  private async handleBackgroundEvent(event: { type: string }): Promise<void> {
+  private async handleBackgroundEvent(event: BackgroundEvent): Promise<void> {
     switch (event.type) {
       case 'PING':
         await this.scanNow('ping');
@@ -307,15 +316,20 @@ export class ContentScriptRuntime {
           await this.scanNow('manual');
         }
         break;
-      case 'AUDIO_CHIME':
-        await this.audioController.handleChimeRequest(event.volume);
+      case 'AUDIO_CHIME': {
+        const volume = typeof event.volume === 'number' ? event.volume : undefined;
+        await this.audioController.handleChimeRequest(volume);
         break;
-      case 'AUDIO_SETTINGS_UPDATE':
+      }
+      case 'AUDIO_SETTINGS_UPDATE': {
+        const sound = typeof event.sound === 'boolean' ? event.sound : undefined;
+        const soundVolume = typeof event.soundVolume === 'number' ? event.soundVolume : undefined;
         this.audioController.applySettings({
-          sound: event.sound,
-          soundVolume: event.soundVolume,
+          sound,
+          soundVolume,
         });
         break;
+      }
       default:
         break;
     }

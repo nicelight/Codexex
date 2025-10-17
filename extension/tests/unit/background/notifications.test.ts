@@ -135,7 +135,7 @@ describe('background notifications', () => {
   });
 
   it('uses localized strings from i18n when scheduling notifications', async () => {
-    chromeMock.i18n.getUILanguage = () => 'ru-RU';
+    chromeMock.i18n!.getUILanguage = () => 'ru-RU';
     const aggregator = createAggregatorInstance({ now: () => currentTime });
     await aggregator.ready;
 

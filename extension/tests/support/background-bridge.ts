@@ -111,7 +111,7 @@ export function createBackgroundBridge(
   };
 
   chromeMock.runtime.sendMessage = ((message: unknown, callback?: (response?: unknown) => void) => {
-    void dispatch(message, undefined).then((response) => {
+    void dispatch(message, defaultSender).then((response) => {
       callback?.(response);
     });
     return undefined as unknown;
@@ -120,13 +120,11 @@ export function createBackgroundBridge(
   chromeMock.tabs.sendMessage = (async (
     ...args: Parameters<typeof chrome.tabs.sendMessage>
   ) => {
-    const [tabId, payload, third, fourth] = args;
+    const [tabId, payload, maybeOptionsOrCallback] = args;
     const callback =
-      typeof third === 'function'
-        ? (third as (response?: unknown) => void)
-        : typeof fourth === 'function'
-          ? (fourth as (response?: unknown) => void)
-          : undefined;
+      typeof maybeOptionsOrCallback === 'function'
+        ? (maybeOptionsOrCallback as (response?: unknown) => void)
+        : undefined;
     chromeMock.__events.runtime.onMessage.emit(
       payload,
       { tab: { id: typeof tabId === 'number' ? tabId : defaultSender.tab?.id } } as chrome.runtime.MessageSender,
