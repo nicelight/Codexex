@@ -60,7 +60,7 @@
 ## Метрики и отчётность
 - Покрытие unit-тестов ActivityScanner ≥80%.
 - Контрактные проверки JSON Schema выполняются в CI при каждом PR.
-- GitHub Actions workflow `.github/workflows/ci.yml` автоматически запускает `npm run lint`, `npx tsc --noEmit`, `npm run test:unit` и `npm run test:contract` для каждой ветки `pull_request` и обновлений `main`.
+- GitHub Actions workflow `.github/workflows/ci.yml` автоматически запускает `npm run lint`, `npx tsc --noEmit`, `npm run test:unit`, `npm run test:contract` и `npm run test:integration` для каждой ветки `pull_request` и обновлений `main`, а по завершении успешно пройденных проверок включает auto-merge PR и публикует комментарий `@codex` в обсуждении.
 - Отчёт о прогоне включается в PR (лог тестов + результаты AJV).
 
 ## Инструменты
