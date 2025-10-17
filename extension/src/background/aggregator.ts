@@ -16,8 +16,10 @@ import {
 } from '../shared/chrome';
 import { getSessionStateKey } from '../shared/storage';
 import { canonicalizeCodexUrl } from '../shared/url';
+import { SETTINGS_DEFAULTS } from '../shared/settings';
+import type { BackgroundSettingsController } from './settings-controller';
 
-const DEFAULT_DEBOUNCE_MS = 12_000;
+const FALLBACK_DEBOUNCE_MS = SETTINGS_DEFAULTS.debounceMs;
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 15_000;
 const HEARTBEAT_STALE_MULTIPLIER = 3;
 const STORAGE_KEY = getSessionStateKey();
@@ -30,6 +32,7 @@ type StateMutator = (
 ) => boolean;
 
 type AggregatorListener = (event: AggregatorChangeEvent) => void;
+type IdleSettledListener = (state: AggregatedTabsState) => void;
 
 export type AggregatorEventReason =
   | 'init'
@@ -38,7 +41,8 @@ export type AggregatorEventReason =
   | 'tab-removed'
   | 'tab-navigated'
   | 'heartbeat-stale'
-  | 'debounce-cleared';
+  | 'debounce-cleared'
+  | 'settings-updated';
 
 export interface AggregatorChangeEvent {
   readonly reason: AggregatorEventReason;
@@ -52,11 +56,13 @@ export interface AggregatorOptions {
   readonly chrome?: ChromeLike;
   readonly logger?: ChromeLogger;
   readonly now?: () => number;
+  readonly settings?: BackgroundSettingsController;
 }
 
 export interface BackgroundAggregator {
   readonly ready: Promise<void>;
   onStateChange(listener: AggregatorListener): () => void;
+  onIdleSettled(listener: IdleSettledListener): () => void;
   getSnapshot(): Promise<AggregatedTabsState>;
   getTrackedTabIds(): Promise<number[]>;
   handleTasksUpdate(
@@ -70,7 +76,6 @@ export interface BackgroundAggregator {
   handleTabRemoved(tabId: number): Promise<void>;
   handleTabNavigated(tabId: number): Promise<void>;
   evaluateHeartbeatStatuses(): Promise<number[]>;
-  clearDebounceIfIdle(): Promise<boolean>;
 }
 
 export function initializeAggregator(options: AggregatorOptions = {}): BackgroundAggregator {
@@ -84,20 +89,35 @@ class BackgroundAggregatorImpl implements BackgroundAggregator {
   private readonly chrome: ChromeLike;
   private readonly logger: ChromeLogger;
   private readonly now: () => number;
+  private readonly settings?: BackgroundSettingsController;
   private readonly listeners = new Set<AggregatorListener>();
+  private readonly idleListeners = new Set<IdleSettledListener>();
+  private idleTimer: ReturnType<typeof setTimeout> | undefined;
+  private idleTarget = 0;
 
   constructor(options: AggregatorOptions) {
     this.chrome = options.chrome ?? resolveChrome();
     const baseLogger = options.logger ?? createLogger('codex-background');
     this.logger = createChildLogger(baseLogger, 'aggregator');
     this.now = options.now ?? (() => Date.now());
-    this.ready = this.loadInitialState();
+    this.settings = options.settings;
+    this.ready = this.initialize();
+    this.settings?.onChange((next) => {
+      void this.applyDebounceDuration(next.debounceMs);
+    });
   }
 
   onStateChange(listener: AggregatorListener): () => void {
     this.listeners.add(listener);
     return () => {
       this.listeners.delete(listener);
+    };
+  }
+
+  onIdleSettled(listener: IdleSettledListener): () => void {
+    this.idleListeners.add(listener);
+    return () => {
+      this.idleListeners.delete(listener);
     };
   }
 
@@ -343,29 +363,6 @@ class BackgroundAggregatorImpl implements BackgroundAggregator {
     return staleTabIds;
   }
 
-  async clearDebounceIfIdle(): Promise<boolean> {
-    await this.ready;
-    let cleared = false;
-    await this.updateState(
-      'debounce-cleared',
-      (next) => {
-        if (next.debounce.since === 0) {
-          return false;
-        }
-        if (next.lastTotal === 0 && areAllCountsZero(next.tabs)) {
-          next.debounce.since = 0;
-          cleared = true;
-          return true;
-        }
-        return false;
-      },
-    );
-    if (cleared) {
-      this.logger.info('debounce window cleared');
-    }
-    return cleared;
-  }
-
   private async dropTabState(
     tabId: number,
     reason: Extract<AggregatorEventReason, 'tab-removed' | 'tab-navigated'>,
@@ -402,26 +399,47 @@ class BackgroundAggregatorImpl implements BackgroundAggregator {
     this.logger.debug('dropTabState skipped for untracked tab', { tabId, reason });
   }
 
+  private async initialize(): Promise<void> {
+    await this.loadInitialState();
+    if (this.settings) {
+      try {
+        await this.settings.ready;
+        const snapshot = this.settings.getSnapshot();
+        await this.applyDebounceDuration(snapshot.debounceMs);
+      } catch (error) {
+        this.logger.warn('failed to apply settings during init', error);
+        await this.applyDebounceDuration(FALLBACK_DEBOUNCE_MS);
+      }
+    } else {
+      await this.applyDebounceDuration(FALLBACK_DEBOUNCE_MS);
+    }
+    this.refreshIdleTimer();
+  }
+
   private async loadInitialState(): Promise<void> {
     try {
-      const result = await this.chrome.storage.session.get({ [STORAGE_KEY]: DEFAULT_STATE });
-      const stored = result[STORAGE_KEY];
-      if (stored) {
-        try {
-          assertAggregatedTabsState(stored);
-          this.state = cloneState(normalizeState(stored));
-          this.logger.info('restored aggregated state', {
-            tabs: Object.keys(this.state.tabs).length,
-            lastTotal: this.state.lastTotal,
-          });
-          this.notifyListeners({
-            reason: 'init',
-            previous: cloneState(DEFAULT_STATE),
-            current: cloneState(this.state),
-          });
-          return;
-        } catch (error) {
-          this.logger.warn('stored state invalid, resetting', error);
+      const result = await this.chrome.storage.session.get(STORAGE_KEY);
+      if (Object.prototype.hasOwnProperty.call(result, STORAGE_KEY)) {
+        const stored = result[STORAGE_KEY];
+        if (stored) {
+          try {
+            assertAggregatedTabsState(stored);
+            this.state = cloneState(normalizeState(stored));
+            this.logger.info('restored aggregated state', {
+              tabs: Object.keys(this.state.tabs).length,
+              lastTotal: this.state.lastTotal,
+            });
+            this.notifyListeners({
+              reason: 'init',
+              previous: cloneState(DEFAULT_STATE),
+              current: cloneState(this.state),
+            });
+            return;
+          } catch (error) {
+            this.logger.warn('stored state invalid, resetting', error);
+          }
+        } else {
+          this.logger.warn('stored state empty, resetting');
         }
       }
     } catch (error) {
@@ -457,6 +475,7 @@ class BackgroundAggregatorImpl implements BackgroundAggregator {
       current: cloneState(this.state),
       ...meta,
     });
+    this.refreshIdleTimer();
   }
 
   private async persistState(state: AggregatedTabsState): Promise<void> {
@@ -492,6 +511,16 @@ class BackgroundAggregatorImpl implements BackgroundAggregator {
     }
   }
 
+  private notifyIdleListeners(state: AggregatedTabsState): void {
+    for (const listener of Array.from(this.idleListeners)) {
+      try {
+        listener(cloneState(state));
+      } catch (error) {
+        this.logger.error('idle listener threw', error);
+      }
+    }
+  }
+
   private applyDebounceTransition(
     state: AggregatedTabsState,
     previousTotal: number,
@@ -507,6 +536,88 @@ class BackgroundAggregatorImpl implements BackgroundAggregator {
       return true;
     }
     return false;
+  }
+
+  private async applyDebounceDuration(debounceMs: number): Promise<void> {
+    const normalized = Math.min(Math.max(Math.trunc(debounceMs), 0), 60_000);
+    let changed = false;
+    await this.updateState(
+      'settings-updated',
+      (next) => {
+        if (next.debounce.ms === normalized) {
+          return false;
+        }
+        next.debounce.ms = normalized;
+        changed = true;
+        return true;
+      },
+    );
+    if (!changed) {
+      this.refreshIdleTimer();
+    }
+  }
+
+  private refreshIdleTimer(): void {
+    if (this.state.debounce.since === 0) {
+      this.clearIdleTimer();
+      return;
+    }
+    if (this.state.lastTotal > 0 || !areAllCountsZero(this.state.tabs)) {
+      this.clearIdleTimer();
+      return;
+    }
+    const target = this.state.debounce.since + this.state.debounce.ms;
+    const now = this.now();
+    if (now >= target) {
+      this.clearIdleTimer();
+      void this.handleIdleSettled();
+      return;
+    }
+    if (this.idleTimer && this.idleTarget === target) {
+      return;
+    }
+    this.clearIdleTimer();
+    const delay = Math.max(0, target - now);
+    this.idleTarget = target;
+    this.idleTimer = setTimeout(() => {
+      this.idleTimer = undefined;
+      this.idleTarget = 0;
+      void this.handleIdleSettled();
+    }, delay);
+    this.logger.debug('idle timer scheduled', { delay, target });
+  }
+
+  private clearIdleTimer(): void {
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = undefined;
+    }
+    this.idleTarget = 0;
+  }
+
+  private async handleIdleSettled(): Promise<void> {
+    let settledState: AggregatedTabsState | undefined;
+    let cleared = false;
+    await this.updateState(
+      'debounce-cleared',
+      (next) => {
+        if (next.debounce.since === 0) {
+          return false;
+        }
+        if (next.lastTotal !== 0 || !areAllCountsZero(next.tabs)) {
+          return false;
+        }
+        next.debounce.since = 0;
+        cleared = true;
+        settledState = cloneState(next);
+        return true;
+      },
+    );
+    if (cleared && settledState) {
+      this.logger.info('debounce window cleared');
+      this.notifyIdleListeners(settledState);
+    }
+    this.refreshIdleTimer();
   }
 
   private resolveTitle(
@@ -545,14 +656,14 @@ const DEFAULT_STATE: AggregatedTabsState = {
   tabs: {},
   lastTotal: 0,
   debounce: {
-    ms: DEFAULT_DEBOUNCE_MS,
+    ms: FALLBACK_DEBOUNCE_MS,
     since: 0,
   },
 };
 
 function ensureDebounceDefaults(debounce: AggregatedDebounceState): void {
   if (typeof debounce.ms !== 'number' || Number.isNaN(debounce.ms)) {
-    debounce.ms = DEFAULT_DEBOUNCE_MS;
+    debounce.ms = FALLBACK_DEBOUNCE_MS;
   }
   debounce.ms = Math.min(Math.max(debounce.ms, 0), 60_000);
   if (typeof debounce.since !== 'number' || Number.isNaN(debounce.since) || debounce.since < 0) {
@@ -569,7 +680,7 @@ function normalizeState(state: AggregatedTabsState): AggregatedTabsState {
     tabs: normalizedTabs,
     lastTotal: deriveAggregatedTotal(normalizedTabs),
     debounce: {
-      ms: state.debounce?.ms ?? DEFAULT_DEBOUNCE_MS,
+      ms: state.debounce?.ms ?? FALLBACK_DEBOUNCE_MS,
       since: state.debounce?.since ?? 0,
     },
   };
@@ -622,7 +733,6 @@ function cloneState(state: AggregatedTabsState): AggregatedTabsState {
 
 function deriveAggregatedTotal(tabs: Record<string, AggregatedTabState>): number {
   const listingGroups = new Map<string, number>();
-  let hasListing = false;
   let taskDetailsCount = 0;
   let hasTaskDetails = false;
   let fallbackTotal = 0;
@@ -630,7 +740,6 @@ function deriveAggregatedTotal(tabs: Record<string, AggregatedTabState>): number
   for (const tab of Object.values(tabs)) {
     const canonical = canonicalizeCodexUrl(tab.origin);
     if (canonical?.isTasksListing) {
-      hasListing = true;
       const key = canonical.canonical;
       const previous = listingGroups.get(key) ?? 0;
       const next = tab.count > previous ? tab.count : previous;

@@ -72,6 +72,10 @@ class StubAggregator implements BackgroundAggregator {
     };
   }
 
+  onIdleSettled(): () => void {
+    return () => undefined;
+  }
+
   async getSnapshot(): Promise<AggregatedTabsState> {
     return JSON.parse(JSON.stringify(this.state)) as AggregatedTabsState;
   }
@@ -88,10 +92,6 @@ class StubAggregator implements BackgroundAggregator {
 
   async evaluateHeartbeatStatuses(): Promise<number[]> {
     return [];
-  }
-
-  async clearDebounceIfIdle(): Promise<boolean> {
-    return false;
   }
 
   emitTotal(total: number): void {

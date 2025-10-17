@@ -10,6 +10,8 @@ import {
 } from '../../../src/shared/chrome';
 import { getSessionStateKey } from '../../../src/shared/storage';
 import { initializeAggregator } from '../../../src/background/aggregator';
+import { initializeSettingsController } from '../../../src/background/settings-controller';
+import { SETTINGS_DEFAULTS } from '../../../src/shared/settings';
 
 describe('BackgroundAggregator', () => {
   let chromeMock: ChromeMock;
@@ -23,8 +25,16 @@ describe('BackgroundAggregator', () => {
     setChromeInstance(undefined);
   });
 
+  function createAggregatorInstance(
+    overrides: Partial<Parameters<typeof initializeAggregator>[0]> = {},
+  ) {
+    const settings = initializeSettingsController({ chrome: chromeMock });
+    const aggregator = initializeAggregator({ chrome: chromeMock, ...overrides, settings });
+    return { aggregator, settings };
+  }
+
   it('persists TASKS_UPDATE payloads and recalculates totals', async () => {
-    const aggregator = initializeAggregator({ chrome: chromeMock });
+    const { aggregator } = createAggregatorInstance();
     await aggregator.ready;
 
     const message: ContentScriptTasksUpdate = {
@@ -56,7 +66,7 @@ describe('BackgroundAggregator', () => {
   });
 
   it('treats plan listing origin as aggregatable source', async () => {
-    const aggregator = initializeAggregator({ chrome: chromeMock });
+    const { aggregator } = createAggregatorInstance();
     await aggregator.ready;
 
     const message: ContentScriptTasksUpdate = {
@@ -82,7 +92,7 @@ describe('BackgroundAggregator', () => {
   });
 
   it('deduplicates counts reported by multiple listing tabs', async () => {
-    const aggregator = initializeAggregator({ chrome: chromeMock });
+    const { aggregator } = createAggregatorInstance();
     await aggregator.ready;
 
     const baseMessage: ContentScriptTasksUpdate = {
@@ -114,7 +124,7 @@ describe('BackgroundAggregator', () => {
   });
 
   it('uses task detail counter when listing tabs are absent', async () => {
-    const aggregator = initializeAggregator({ chrome: chromeMock });
+    const { aggregator } = createAggregatorInstance();
     await aggregator.ready;
 
     const detailMessage: ContentScriptTasksUpdate = {
@@ -145,7 +155,7 @@ describe('BackgroundAggregator', () => {
   });
 
   it('prefers task detail totals when both listing and details are present', async () => {
-    const aggregator = initializeAggregator({ chrome: chromeMock });
+    const { aggregator } = createAggregatorInstance();
     await aggregator.ready;
 
     const listingMessage: ContentScriptTasksUpdate = {
@@ -179,7 +189,7 @@ describe('BackgroundAggregator', () => {
   });
 
   it('removes tab state when tasks update originates outside Codex', async () => {
-    const aggregator = initializeAggregator({ chrome: chromeMock });
+    const { aggregator } = createAggregatorInstance();
     await aggregator.ready;
 
     const sender = { tab: { id: 12, title: 'Codex – Tasks' } } as chrome.runtime.MessageSender;
@@ -214,7 +224,7 @@ describe('BackgroundAggregator', () => {
   });
 
   it('ignores heartbeats originating outside Codex', async () => {
-    const aggregator = initializeAggregator({ chrome: chromeMock });
+    const { aggregator } = createAggregatorInstance();
     await aggregator.ready;
 
     const sender = { tab: { id: 13, title: 'Codex – Tasks' } } as chrome.runtime.MessageSender;
@@ -248,7 +258,7 @@ describe('BackgroundAggregator', () => {
   });
 
   it('skips navigation cleanup for untracked tabs without touching storage', async () => {
-    const aggregator = initializeAggregator({ chrome: chromeMock });
+    const { aggregator } = createAggregatorInstance();
     await aggregator.ready;
 
     const setSpy = vi.spyOn(chromeMock.storage.session, 'set');
@@ -264,7 +274,7 @@ describe('BackgroundAggregator', () => {
   });
 
   it('skips removal cleanup for untracked tabs without touching storage', async () => {
-    const aggregator = initializeAggregator({ chrome: chromeMock });
+    const { aggregator } = createAggregatorInstance();
     await aggregator.ready;
 
     const setSpy = vi.spyOn(chromeMock.storage.session, 'set');
@@ -280,7 +290,7 @@ describe('BackgroundAggregator', () => {
   });
 
   it('drops tracked tab state on navigation events', async () => {
-    const aggregator = initializeAggregator({ chrome: chromeMock });
+    const { aggregator } = createAggregatorInstance();
     await aggregator.ready;
 
     const setSpy = vi.spyOn(chromeMock.storage.session, 'set');
@@ -367,7 +377,7 @@ describe('BackgroundAggregator', () => {
       },
     });
 
-    const aggregator = initializeAggregator({ chrome: chromeMock });
+    const { aggregator } = createAggregatorInstance();
     await aggregator.ready;
 
     const snapshot = await aggregator.getSnapshot();
@@ -378,7 +388,7 @@ describe('BackgroundAggregator', () => {
 
   it('resets heartbeat status on TASKS_HEARTBEAT', async () => {
     let currentTime = 0;
-    const aggregator = initializeAggregator({ chrome: chromeMock, now: () => currentTime });
+    const { aggregator } = createAggregatorInstance({ now: () => currentTime });
     await aggregator.ready;
 
     const sender = { tab: { id: 3, title: 'Codex' } } as chrome.runtime.MessageSender;
@@ -408,7 +418,7 @@ describe('BackgroundAggregator', () => {
 
   it('marks tabs as stale after missed heartbeat interval', async () => {
     let currentTime = 0;
-    const aggregator = initializeAggregator({ chrome: chromeMock, now: () => currentTime });
+    const { aggregator } = createAggregatorInstance({ now: () => currentTime });
     await aggregator.ready;
 
     const sender = { tab: { id: 11, title: 'Codex' } } as chrome.runtime.MessageSender;
@@ -431,8 +441,9 @@ describe('BackgroundAggregator', () => {
   });
 
   it('clears debounce window when state remains idle', async () => {
+    vi.useFakeTimers();
     let currentTime = 0;
-    const aggregator = initializeAggregator({ chrome: chromeMock, now: () => currentTime });
+    const { aggregator } = createAggregatorInstance({ now: () => currentTime });
     await aggregator.ready;
 
     const sender = { tab: { id: 9, title: 'Codex' } } as chrome.runtime.MessageSender;
@@ -444,6 +455,10 @@ describe('BackgroundAggregator', () => {
       signals: [],
       ts: 1_000,
     };
+    const idleListener = vi.fn();
+    aggregator.onIdleSettled((state) => idleListener(state));
+
+    currentTime = 1_000;
     await aggregator.handleTasksUpdate(activeMessage, sender);
 
     currentTime = 2_000;
@@ -453,10 +468,29 @@ describe('BackgroundAggregator', () => {
     const preSnapshot = await aggregator.getSnapshot();
     expect(preSnapshot.debounce.since).toBe(2_000);
 
-    const cleared = await aggregator.clearDebounceIfIdle();
-    expect(cleared).toBe(true);
+    currentTime = 2_000 + SETTINGS_DEFAULTS.debounceMs;
+    await vi.advanceTimersByTimeAsync(SETTINGS_DEFAULTS.debounceMs);
+
     const postSnapshot = await aggregator.getSnapshot();
     expect(postSnapshot.debounce.since).toBe(0);
+    expect(idleListener).toHaveBeenCalledTimes(1);
+    expect(idleListener.mock.calls[0]?.[0].lastTotal).toBe(0);
+
+    vi.useRealTimers();
+  });
+
+  it('updates debounce duration when settings change', async () => {
+    const { aggregator } = createAggregatorInstance();
+    await aggregator.ready;
+
+    let snapshot = await aggregator.getSnapshot();
+    expect(snapshot.debounce.ms).toBe(SETTINGS_DEFAULTS.debounceMs);
+
+    await chromeMock.storage.sync?.set({ debounceMs: 5_000 });
+    await Promise.resolve();
+
+    snapshot = await aggregator.getSnapshot();
+    expect(snapshot.debounce.ms).toBe(5_000);
   });
 
   it('retries storage writes on transient failures', async () => {
@@ -470,9 +504,10 @@ describe('BackgroundAggregator', () => {
       return originalSet(items);
     };
 
-    const aggregator = initializeAggregator({ chrome: chromeMock });
+    const { aggregator } = createAggregatorInstance();
     await aggregator.ready;
 
+    attempt = 0;
     const message: ContentScriptTasksUpdate = {
       type: 'TASKS_UPDATE',
       origin: 'https://chatgpt.com/codex',
@@ -488,7 +523,7 @@ describe('BackgroundAggregator', () => {
   });
 
   it('restores persisted state after reinitialization', async () => {
-    const aggregator = initializeAggregator({ chrome: chromeMock });
+    const { aggregator } = createAggregatorInstance();
     await aggregator.ready;
 
     const message: ContentScriptTasksUpdate = {
@@ -502,7 +537,7 @@ describe('BackgroundAggregator', () => {
     const sender = { tab: { id: 42, title: 'Codex' } } as chrome.runtime.MessageSender;
     await aggregator.handleTasksUpdate(message, sender);
 
-    const restoredAggregator = initializeAggregator({ chrome: chromeMock });
+    const { aggregator: restoredAggregator } = createAggregatorInstance();
     await restoredAggregator.ready;
    const snapshot = await restoredAggregator.getSnapshot();
     expect(snapshot.lastTotal).toBe(3);
@@ -537,7 +572,7 @@ describe('BackgroundAggregator', () => {
     }));
     const setSpy = vi.spyOn(chromeMock.storage.session, 'set');
 
-    const aggregator = initializeAggregator({ chrome: chromeMock });
+    const { aggregator } = createAggregatorInstance();
     await aggregator.ready;
 
     const snapshot = await aggregator.getSnapshot();
@@ -561,7 +596,7 @@ describe('BackgroundAggregator', () => {
     });
     const setSpy = vi.spyOn(chromeMock.storage.session, 'set');
 
-    const aggregator = initializeAggregator({ chrome: chromeMock });
+    const { aggregator } = createAggregatorInstance();
     await aggregator.ready;
 
     const snapshot = await aggregator.getSnapshot();
@@ -574,7 +609,7 @@ describe('BackgroundAggregator', () => {
   });
 
   it('ignores heartbeat messages without tab id', async () => {
-    const aggregator = initializeAggregator({ chrome: chromeMock });
+    const { aggregator } = createAggregatorInstance();
     await aggregator.ready;
 
     const heartbeat: ContentScriptHeartbeat = {

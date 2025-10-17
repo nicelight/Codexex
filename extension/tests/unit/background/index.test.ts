@@ -30,6 +30,7 @@ function createAggregatorMock(snapshot?: AggregatedTabsState): BackgroundAggrega
   return {
     ready: Promise.resolve(),
     onStateChange: vi.fn(() => () => undefined),
+    onIdleSettled: vi.fn(() => () => undefined),
     getSnapshot: vi.fn(async () =>
       snapshot ?? {
         tabs: {},
@@ -42,7 +43,6 @@ function createAggregatorMock(snapshot?: AggregatedTabsState): BackgroundAggrega
     handleHeartbeat: vi.fn(async () => undefined),
     handleTabRemoved: vi.fn(async () => undefined),
     evaluateHeartbeatStatuses: vi.fn(async () => []),
-    clearDebounceIfIdle: vi.fn(async () => false),
   };
 }
 

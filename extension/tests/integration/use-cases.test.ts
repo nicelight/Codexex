@@ -34,10 +34,12 @@ describe('integration use-cases', () => {
     const aggregator = initializeAggregator({ chrome: chromeMock });
     await aggregator.ready;
 
+    window.history.replaceState({}, '', '/codex');
     const notifications = initializeNotifications(aggregator, { chrome: chromeMock });
     const bridge = createBackgroundBridge(chromeMock, aggregator, {
       tabId: 10,
       tabTitle: 'Codex Tasks',
+      tabUrl: 'http://localhost/codex',
     });
 
     const notificationCreate = vi.spyOn(chromeMock.notifications, 'create');
@@ -83,9 +85,11 @@ describe('integration use-cases', () => {
     const aggregator = initializeAggregator({ chrome: chromeMock });
     await aggregator.ready;
 
+    window.history.replaceState({}, '', '/codex');
     const bridge = createBackgroundBridge(chromeMock, aggregator, {
       tabId: 42,
       tabTitle: 'Codex Heartbeat',
+      tabUrl: 'http://localhost/codex',
     });
     const alarms = registerAlarms(aggregator, { chrome: chromeMock });
 

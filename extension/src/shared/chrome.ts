@@ -111,7 +111,9 @@ export interface ChromeLike {
 let chromeOverride: ChromeLike | undefined;
 let injectedChrome: ChromeLike | undefined;
 
-type ViLike = typeof import('vitest')['vi'];
+type ViLike = {
+  fn<T extends (...args: any[]) => unknown>(impl: T): T;
+};
 
 function getVi(): ViLike | undefined {
   const candidate = (globalThis as { vi?: ViLike }).vi;

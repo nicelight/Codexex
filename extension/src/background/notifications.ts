@@ -33,7 +33,6 @@ const STRINGS: Record<'en' | 'ru', NotificationStrings> = {
 export interface NotificationsOptions {
   readonly chrome?: ChromeLike;
   readonly logger?: ChromeLogger;
-  readonly now?: () => number;
 }
 
 export interface NotificationsController {
@@ -47,109 +46,60 @@ export function initializeNotifications(
   const chrome = options.chrome ?? resolveChrome();
   const baseLogger = options.logger ?? createLogger('codex-background');
   const logger = createChildLogger(baseLogger, 'notifications');
-  const now = options.now ?? (() => Date.now());
   const locale = resolveLocale(chrome);
   const strings = STRINGS[locale];
 
   let disposed = false;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let scheduledTarget = 0;
   let activeNotificationId: string | undefined;
 
   const unsubscribe = aggregator.onStateChange((event) => {
     if (disposed) {
       return;
     }
-    handleStateSnapshot(event.current).catch((error) => {
-      logger.error('state change handling failed', error);
+    if (event.current.lastTotal > 0) {
+      void clearNotification();
+    }
+  });
+
+  const unsubscribeIdle = aggregator.onIdleSettled((state) => {
+    if (disposed) {
+      return;
+    }
+    void triggerNotification(state).catch((error) => {
+      logger.error('idle notification failed', error);
     });
   });
 
   void aggregator.ready
     .then(() => aggregator.getSnapshot())
-    .then((snapshot) => handleStateSnapshot(snapshot))
+    .then((snapshot) => {
+      if (snapshot.lastTotal > 0) {
+        return clearNotification();
+      }
+      return undefined;
+    })
     .catch((error) => {
       logger.error('failed to read initial state', error);
     });
 
-  return {
-    dispose() {
-      disposed = true;
-      if (timer) {
-        clearTimeout(timer);
-        timer = undefined;
-      }
-      scheduledTarget = 0;
-      unsubscribe();
-    },
-  };
+    return {
+      dispose() {
+        disposed = true;
+        unsubscribe();
+        unsubscribeIdle();
+        void clearNotification();
+      },
+    };
 
-  async function handleStateSnapshot(state: AggregatedTabsState): Promise<void> {
+  async function triggerNotification(state: AggregatedTabsState): Promise<void> {
     if (disposed) {
       return;
     }
-    if (state.lastTotal > 0) {
-      cancelTimer();
-      await clearNotification();
+    if (state.lastTotal !== 0 || !allCountsZero(state)) {
+      logger.debug('notification skipped due to activity');
       return;
     }
-    if (state.debounce.since === 0) {
-      cancelTimer();
-      return;
-    }
-    scheduleTimer(state);
-  }
-
-  function scheduleTimer(state: AggregatedTabsState): void {
-    const target = state.debounce.since + state.debounce.ms;
-    const current = now();
-    if (current >= target) {
-      void triggerNotification();
-      return;
-    }
-    if (timer && scheduledTarget === target) {
-      return;
-    }
-    cancelTimer();
-    const delay = Math.max(0, target - current);
-    scheduledTarget = target;
-    timer = setTimeout(() => {
-      timer = undefined;
-      scheduledTarget = 0;
-      void triggerNotification();
-    }, delay);
-    logger.debug('debounce timer scheduled', { delay, target });
-  }
-
-  function cancelTimer(): void {
-    if (timer) {
-      clearTimeout(timer);
-      timer = undefined;
-    }
-    scheduledTarget = 0;
-  }
-
-  async function triggerNotification(): Promise<void> {
-    if (disposed) {
-      return;
-    }
-    const snapshot = await aggregator.getSnapshot();
-    if (snapshot.debounce.since === 0) {
-      logger.debug('debounce window already cleared');
-      return;
-    }
-    const target = snapshot.debounce.since + snapshot.debounce.ms;
-    const current = now();
-    if (current < target) {
-      logger.debug('debounce window not ready yet');
-      scheduleTimer(snapshot);
-      return;
-    }
-    if (snapshot.lastTotal !== 0 || !allCountsZero(snapshot)) {
-      logger.info('activity detected during debounce, skipping notification');
-      cancelTimer();
-      return;
-    }
+    await clearNotification();
     try {
       const notificationId = await chrome.notifications.create(NOTIFICATION_ID, {
         type: 'basic',
@@ -162,9 +112,6 @@ export function initializeNotifications(
       logger.info('notification created', { notificationId: activeNotificationId });
     } catch (error) {
       logger.error('failed to create notification', error);
-    } finally {
-      cancelTimer();
-      await aggregator.clearDebounceIfIdle();
     }
   }
 
