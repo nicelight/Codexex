@@ -193,6 +193,32 @@ describe('content runtime', () => {
     runtime.destroy();
   });
 
+  it('detects activity on the plan listing path', async () => {
+    setWindowLocation('https://chatgpt.com/plan');
+    const runtime = new ContentScriptRuntime({ window });
+    await runtime.start();
+
+    document.body.innerHTML = `
+      <div class="task">
+        <button class="btn">Stop</button>
+      </div>
+    `;
+    await flushMicrotasks();
+    chromeMock!.__events.runtime.onMessage.emit(
+      { type: 'PING' },
+      { tab: { id: 1 } } as chrome.runtime.MessageSender,
+      () => undefined,
+    );
+    await flushMicrotasks();
+    await vi.advanceTimersByTimeAsync(10);
+
+    const messages = chromeMock!.__messages;
+    const positiveUpdate = findLastTasksUpdate(messages, (message) => (message.count ?? 0) > 0);
+    expect(positiveUpdate).toBeDefined();
+
+    runtime.destroy();
+  });
+
   it('scans task details page for activity counters', async () => {
     setWindowLocation('https://chatgpt.com/codex/tasks/task_123');
     const runtime = new ContentScriptRuntime({ window });
