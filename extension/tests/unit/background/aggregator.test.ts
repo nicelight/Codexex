@@ -55,6 +55,32 @@ describe('BackgroundAggregator', () => {
     expect(storedState).toMatchObject({ lastTotal: 2 });
   });
 
+  it('treats plan listing origin as aggregatable source', async () => {
+    const aggregator = initializeAggregator({ chrome: chromeMock });
+    await aggregator.ready;
+
+    const message: ContentScriptTasksUpdate = {
+      type: 'TASKS_UPDATE',
+      origin: 'https://chatgpt.com/plan',
+      active: true,
+      count: 3,
+      signals: [
+        { detector: 'D2_STOP_BUTTON', evidence: 'Stop button visible', taskKey: 'stop:1' },
+      ],
+      ts: 500,
+    };
+    const sender = { tab: { id: 11, title: 'Plan – Tasks' } } as chrome.runtime.MessageSender;
+
+    await aggregator.handleTasksUpdate(message, sender);
+
+    const snapshot = await aggregator.getSnapshot();
+    const tabState = snapshot.tabs['11'];
+    expect(tabState).toBeDefined();
+    expect(tabState?.origin).toBe('https://chatgpt.com/plan');
+    expect(tabState?.count).toBe(3);
+    expect(snapshot.lastTotal).toBe(3);
+  });
+
   it('deduplicates counts reported by multiple listing tabs', async () => {
     const aggregator = initializeAggregator({ chrome: chromeMock });
     await aggregator.ready;
