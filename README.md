@@ -88,6 +88,20 @@ flowchart TB
   SW --> POP[popup]
   CS --> DOM[страница Codex]
 ```
+### Взаимодействие компонентов 
+```mermaid 
+graph TD
+    CS(ContentScriptRuntime) -->|TASKS_UPDATE / TASKS_HEARTBEAT| AGG(Aggregator)
+    AGG -->|state change| NOTIF(Notifications)
+    AGG -->|state change| AUDIO(AudioTrigger)
+    AGG -->|state change| BADGE(ActionIndicator)
+    AGG -->|evaluateHeartbeatStatuses| ALARM(Alarms)
+    ALARM -->|PING| CS
+    POPUP[Popup UI] -->|POPUP_GET_STATE| AGG
+    POPUP -->|load/save settings| SYNC[(chrome.storage.sync)]
+    AGG -->|persist| SESSION[(chrome.storage.session)]
+    AUDIO -->|AUDIO_CHIME / SETTINGS_UPDATE| CS
+```
 
 ### Машина состояний уведомления
 
@@ -100,17 +114,24 @@ stateDiagram-v2
   Notified --> Waiting: запущена новая задача
 ```
 
-### Потоки данных
-
+### Тригер завершенных задач
 ```mermaid
 sequenceDiagram
-  participant CS as content script
-  participant SW as background
-  participant UI as popup
-  CS->>SW: TASKS_UPDATE
-  SW->>SW: Агрегация по вкладкам
-  UI->>SW: Запрос состояния
-  SW-->>UI: Список активных задач
+    participant DOM as Codex DOM
+    participant CS as ContentScriptRuntime
+    participant BG as Background Aggregator
+    participant CTRL as Notifications/Audio
+    participant USER
+
+    DOM->>CS: Mutation/idle tick
+    CS->>CS: ActivityScanner.scan()
+    CS->>BG: TASKS_UPDATE(active=false,count=0,signals)
+    BG->>BG: applyDebounceTransition()
+    BG->>CTRL: state change (lastTotal→0, debounce since>0)
+    Note right of CTRL: ждём debounce ms
+    CTRL->>BG: verify snapshot still idle
+    CTRL->>USER: Chrome notification +/− звук
+    CTRL->>BG: clearDebounceIfIdle()
 ```
 
 ---
