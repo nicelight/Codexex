@@ -1,34 +1,32 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { ActivityScanner } from '../../../src/content/activity-scanner';
-import { createDetectorPipeline } from '../../../src/content/detectors';
 import { noopLogger } from '../../../src/shared/chrome';
 
-describe('content detectors', () => {
-  it('detects spinner activity', () => {
+function createScanner(): ActivityScanner {
+  return new ActivityScanner({ document, logger: noopLogger });
+}
+
+describe('ActivityScanner', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '';
     document.documentElement.lang = 'en';
+  });
+
+  it('detects spinner elements', () => {
     document.body.innerHTML = `
       <div class="task-list">
         <div aria-busy="true" class="animate-spin"></div>
       </div>
     `;
 
-    const pipeline = createDetectorPipeline({
-      document,
-      logger: noopLogger,
-      enableCardHeuristic: false,
-    });
-    const scanner = new ActivityScanner(pipeline, noopLogger);
-    const snapshot = scanner.scan(Date.now());
+    const snapshot = createScanner().scan(Date.now());
 
     expect(snapshot.active).toBe(true);
     expect(snapshot.count).toBeGreaterThanOrEqual(1);
-    expect(snapshot.signals.some((signal) => signal.detector === 'D1_SPINNER')).toBe(
-      true,
-    );
+    expect(snapshot.signals.some((signal) => signal.detector === 'D1_SPINNER')).toBe(true);
   });
 
-  it('extracts counter from task details spinner', () => {
-    document.documentElement.lang = 'en';
+  it('extracts counter values from task details spinner', () => {
     document.body.innerHTML = `
       <div class="relative size-6">
         <div class="absolute inset-0 flex items-center justify-center">
@@ -37,272 +35,66 @@ describe('content detectors', () => {
       </div>
     `;
 
-    const pipeline = createDetectorPipeline({
-      document,
-      logger: noopLogger,
-      enableCardHeuristic: false,
-    });
-    const scanner = new ActivityScanner(pipeline, noopLogger);
-    const snapshot = scanner.scan(Date.now());
+    const snapshot = createScanner().scan(Date.now());
 
     expect(snapshot.active).toBe(true);
     expect(snapshot.count).toBe(5);
-    expect(snapshot.signals.some((signal) => signal.detector === 'D4_TASK_COUNTER')).toBe(
-      true,
-    );
+    expect(snapshot.signals.some((signal) => signal.detector === 'D4_TASK_COUNTER')).toBe(true);
   });
 
-  it('detects stop buttons in English interface', () => {
-    document.documentElement.lang = 'en';
+  it('detects stop buttons using text and aria-label', () => {
     document.body.innerHTML = `
-      <div class="task">
+      <div class="task" data-task-id="foo">
         <button class="btn">Stop</button>
-        <button class="btn">Stop run</button>
-      </div>
-    `;
-
-    const pipeline = createDetectorPipeline({
-      document,
-      logger: noopLogger,
-      enableCardHeuristic: false,
-    });
-    const scanner = new ActivityScanner(pipeline, noopLogger);
-    const snapshot = scanner.scan(Date.now());
-
-    expect(snapshot.active).toBe(true);
-    expect(snapshot.count).toBe(2);
-    const stopSignals = snapshot.signals.filter((signal) => signal.detector === 'D2_STOP_BUTTON');
-    expect(stopSignals).toHaveLength(2);
-  });
-
-  it('detects stop buttons in Russian interface', () => {
-    document.documentElement.lang = 'ru';
-    document.body.innerHTML = `
-      <div class="task" data-task-id="abc123">
-        <button class="btn">Остановить</button>
-      </div>
-    `;
-
-    const pipeline = createDetectorPipeline({
-      document,
-      logger: noopLogger,
-      enableCardHeuristic: false,
-    });
-    const scanner = new ActivityScanner(pipeline, noopLogger);
-    const snapshot = scanner.scan(Date.now());
-
-    expect(snapshot.active).toBe(true);
-    expect(snapshot.count).toBe(1);
-    const signal = snapshot.signals.find((item) => item.detector === 'D2_STOP_BUTTON');
-    expect(signal?.taskKey).toBe('abc123');
-  });
-
-  it('detects cancel buttons in Russian interface', () => {
-    document.documentElement.lang = 'ru';
-    document.body.innerHTML = `
-      <div class="task" data-task-id="cancel-ru">
-        <button class="btn">Отменить задачу</button>
-      </div>
-    `;
-
-    const pipeline = createDetectorPipeline({
-      document,
-      logger: noopLogger,
-      enableCardHeuristic: false,
-    });
-    const scanner = new ActivityScanner(pipeline, noopLogger);
-    const snapshot = scanner.scan(Date.now());
-
-    expect(snapshot.active).toBe(true);
-    expect(snapshot.count).toBe(1);
-    const signal = snapshot.signals.find((item) => item.detector === 'D2_STOP_BUTTON');
-    expect(signal?.taskKey).toBe('cancel-ru');
-  });
-
-  it('detects cancel buttons by aria-label in English interface', () => {
-    document.documentElement.lang = 'en';
-    document.body.innerHTML = `
-      <div class="task" data-task-id="cancel-en">
         <button class="btn" aria-label="Cancel task"></button>
       </div>
     `;
 
-    const pipeline = createDetectorPipeline({
-      document,
-      logger: noopLogger,
-      enableCardHeuristic: false,
-    });
-    const scanner = new ActivityScanner(pipeline, noopLogger);
-    const snapshot = scanner.scan(Date.now());
+    const snapshot = createScanner().scan(Date.now());
 
     expect(snapshot.active).toBe(true);
-    expect(snapshot.count).toBe(1);
-    const signal = snapshot.signals.find((item) => item.detector === 'D2_STOP_BUTTON');
-    expect(signal?.taskKey).toBe('cancel-en');
-  });
-
-  it('detects icon-only stop controls by data-testid hints', () => {
-    document.documentElement.lang = 'en';
-    document.body.innerHTML = `
-      <div class="task" data-task-id="xyz789">
-        <button class="btn" data-testid="task-stop-button">
-          <span aria-hidden="true">
-            <span class="inline-flex size-4 items-center justify-center rounded-full border">
-              <span class="size-2 rounded-sm bg-current"></span>
-            </span>
-          </span>
-        </button>
-        <button class="btn" data-testid="taskCardStopButton">
-          <span aria-hidden="true">
-            <span class="inline-flex size-4 items-center justify-center rounded-full border">
-              <span class="size-2 rounded-sm bg-current"></span>
-            </span>
-          </span>
-        </button>
-      </div>
-    `;
-
-    const pipeline = createDetectorPipeline({
-      document,
-      logger: noopLogger,
-      enableCardHeuristic: false,
-    });
-    const scanner = new ActivityScanner(pipeline, noopLogger);
-    const snapshot = scanner.scan(Date.now());
-
-    expect(snapshot.active).toBe(true);
-    expect(snapshot.count).toBe(2);
-    const stopSignals = snapshot.signals.filter((item) => item.detector === 'D2_STOP_BUTTON');
+    const stopSignals = snapshot.signals.filter((signal) => signal.detector === 'D2_STOP_BUTTON');
     expect(stopSignals).toHaveLength(2);
     stopSignals.forEach((signal) => {
-      expect(signal.taskKey).toBe('xyz789');
+      expect(signal.taskKey).toBe('foo');
     });
   });
 
-  it('ignores hidden stop controls', () => {
+  it('supports russian stop button labels', () => {
     document.documentElement.lang = 'ru';
     document.body.innerHTML = `
-      <div class="task" data-task-id="hidden-ru" hidden>
+      <div class="task" data-task-id="ru-task">
         <button class="btn">Отменить задачу</button>
       </div>
-      <div class="task" data-task-id="visible-ru">
-        <button class="btn" style="display: none;">Отменить задачу</button>
+    `;
+
+    const snapshot = createScanner().scan(Date.now());
+
+    expect(snapshot.active).toBe(true);
+    const signal = snapshot.signals.find((item) => item.detector === 'D2_STOP_BUTTON');
+    expect(signal?.taskKey).toBe('ru-task');
+  });
+
+  it('ignores hidden and disabled stop controls', () => {
+    document.body.innerHTML = `
+      <div class="task" data-task-id="hidden" hidden>
+        <button class="btn">Stop</button>
+      </div>
+      <div class="task" data-task-id="style-hidden">
+        <button class="btn" style="display: none;">Stop</button>
       </div>
       <div class="task" data-task-id="aria-hidden">
-        <button class="btn" aria-hidden="true">Отменить задачу</button>
+        <button class="btn" aria-hidden="true">Stop</button>
+      </div>
+      <div class="task" data-task-id="disabled">
+        <button class="btn" disabled>Cancel</button>
+        <button class="btn" aria-disabled="true">Cancel task</button>
       </div>
     `;
 
-    const pipeline = createDetectorPipeline({
-      document,
-      logger: noopLogger,
-      enableCardHeuristic: false,
-    });
-    const scanner = new ActivityScanner(pipeline, noopLogger);
-    const snapshot = scanner.scan(Date.now());
+    const snapshot = createScanner().scan(Date.now());
 
     expect(snapshot.active).toBe(false);
     expect(snapshot.count).toBe(0);
-  });
-
-  it('ignores disabled stop controls', () => {
-    document.documentElement.lang = 'en';
-    document.body.innerHTML = `
-      <div class="task" data-task-id="disabled-en">
-        <button class="btn" disabled>Cancel task</button>
-        <button class="btn" aria-disabled="true">Cancel run</button>
-      </div>
-    `;
-
-    const pipeline = createDetectorPipeline({
-      document,
-      logger: noopLogger,
-      enableCardHeuristic: false,
-    });
-    const scanner = new ActivityScanner(pipeline, noopLogger);
-    const snapshot = scanner.scan(Date.now());
-
-    expect(snapshot.active).toBe(false);
-    expect(snapshot.count).toBe(0);
-  });
-
-  it('resets detector pipeline caches on reset', () => {
-    document.documentElement.lang = 'en';
-    document.body.innerHTML = `<button class="btn">Stop</button>`;
-
-    const pipeline = createDetectorPipeline({
-      document,
-      logger: noopLogger,
-      enableCardHeuristic: false,
-    });
-    const scanner = new ActivityScanner(pipeline, noopLogger);
-
-    const initialSnapshot = scanner.scan(Date.now());
-    expect(initialSnapshot.active).toBe(true);
-    expect(initialSnapshot.count).toBe(1);
-
-    const button = document.querySelector('button');
-    expect(button).not.toBeNull();
-    if (button) {
-      button.textContent = 'Resume';
-    }
-
-    const cachedSnapshot = scanner.scan(Date.now());
-    expect(cachedSnapshot.active).toBe(true);
-    expect(cachedSnapshot.count).toBe(1);
-
-    pipeline.reset();
-    const afterResetSnapshot = scanner.scan(Date.now());
-    expect(afterResetSnapshot.active).toBe(false);
-    expect(afterResetSnapshot.count).toBe(0);
-  });
-
-  it('reports card heuristic enable flag in debug output', () => {
-    const records: Array<{ enabled: boolean }> = [];
-    const logger = {
-      debug: (...args: unknown[]) => {
-        if (args[0] === 'D3_CARD_HEUR disabled' && typeof args[1] === 'string') {
-          try {
-            const payload = JSON.parse(args[1] as string) as { enabled?: boolean };
-            if (typeof payload.enabled === 'boolean') {
-              records.push({ enabled: payload.enabled });
-            }
-          } catch {
-            // ignore malformed payloads
-          }
-        }
-      },
-      info: noopLogger.info,
-      warn: noopLogger.warn,
-      error: noopLogger.error,
-    };
-
-    document.documentElement.lang = 'en';
-    document.body.innerHTML = '<main></main>';
-
-    const disabledPipeline = createDetectorPipeline({
-      document,
-      logger,
-      enableCardHeuristic: false,
-    });
-    const disabledDetector = disabledPipeline.detectors.find(
-      (detector) => detector.id === 'D3_CARD_HEUR',
-    );
-    expect(disabledDetector).toBeDefined();
-    disabledDetector?.scan(disabledPipeline.createContext(Date.now()));
-
-    const enabledPipeline = createDetectorPipeline({
-      document,
-      logger,
-      enableCardHeuristic: true,
-    });
-    const enabledDetector = enabledPipeline.detectors.find(
-      (detector) => detector.id === 'D3_CARD_HEUR',
-    );
-    expect(enabledDetector).toBeDefined();
-    enabledDetector?.scan(enabledPipeline.createContext(Date.now()));
-
-    expect(records).toContainEqual({ enabled: false });
-    expect(records).toContainEqual({ enabled: true });
   });
 });

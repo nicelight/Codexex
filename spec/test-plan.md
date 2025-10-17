@@ -7,7 +7,7 @@
 - Подтвердить устойчивость heartbeat/`PING` цикла и принудительное отключение `autoDiscardable`.
 
 ## Область покрытия
-- Юнит-тесты детекторов и агрегатора.
+- Юнит-тесты ActivityScanner и агрегатора.
 - Контрактные проверки DTO/State (JSON Schema, Ajv).
 - Интеграционные сценарии с имитацией вкладок, alarm и уведомлений.
 
@@ -35,7 +35,7 @@
 6. **AC6 — Автоотключение выгрузки вкладки (MVP v0.1.0)**
    - Given вкладка Codex отправляет `TASKS_UPDATE` с актуальными данными,
    - When background обновляет агрегированное состояние без участия UI,
-   - Then в течение нескольких секунд вызывается `chrome.tabs.update({ autoDiscardable: false })` для этой вкладки и она добавляется в список защищённых; при удалении вкладки защита снимается.
+    - Then в течение нескольких секунд вызывается `chrome.tabs.update({ autoDiscardable: false })` для этой вкладки и она добавляется в список защищённых; при удалении вкладки защита снимается.
 7. **AC7 — Обнаружение и восстановление heartbeat**
    - Given вкладка перестала отправлять `TASKS_HEARTBEAT` на 45 секунд,
    - When alarm `codex-poll` срабатывает и отправляет `PING`, контент-скрипт отвечает `TASKS_UPDATE` + `TASKS_HEARTBEAT`,
@@ -43,8 +43,7 @@
 
 ## Типы тестов
 - **Unit**
-  - Детекторы: корректное определение активности по тестовым DOM-фрагментам, учёт локали.
-  - ActivityScanner: объединение сигналов, расчёт `count = max(detector.count)`, дебаунс нулевых состояний.
+  - ActivityScanner: корректное определение активности по простым DOM-фрагментам (спиннеры, кнопки Stop/Cancel, счётчики), учёт локали.
   - Aggregator/notifications: переходы состояний `lastTotal`, `debounce`, восстановление из storage, работа retry, локализация уведомлений.
   - Popup: генерация `PopupRenderState`, сортировка вкладок, отображение статуса `STALE`.
 - **Contract**
@@ -54,12 +53,12 @@
   - Проверка восстановления состояния после рестарта service worker (чтение `chrome.storage.session`).
 
 ## Тестовые данные
-- DOM-фрагменты для детекторов D1/D2 (RU/EN), мок-структуры для отключённого D3.
+- DOM-фрагменты для эвристик ActivityScanner (спиннеры, стоп-кнопки RU/EN, счётчик задач).
 - Моки Chrome API: `tabs.update`, `tabs.sendMessage`, `notifications.create`, `notifications.clear`, `alarms`, `storage.session`.
 - Набор последовательностей сообщений для воспроизведения сценариев (см. `spec/use-cases.md`).
 
 ## Метрики и отчётность
-- Покрытие unit-тестов по файлам детекторов ≥80%.
+- Покрытие unit-тестов ActivityScanner ≥80%.
 - Контрактные проверки JSON Schema выполняются в CI при каждом PR.
 - Отчёт о прогоне включается в PR (лог тестов + результаты AJV).
 
@@ -71,9 +70,4 @@
 ## Риски и mitigations
 - Изменение DOM на стороне Codex → предусмотреть возможность обновления фикстур DOM.
 - Ограничения Manifest V3 (спящий воркер) → интеграционные тесты моделируют таймеры `chrome.alarms`.
-6. **AC6 - Toolbar badge reflects aggregated workload**
-   - Given the aggregator reports totalActiveCount = n, when the action indicator updates, then the badge text shows min(n, 99+) and the text color follows spec/action-indicator.md while the background stays transparent.
-   - When totalActiveCount changes, badge updates land within 250 ms and no chrome.action errors are logged.
-7. **AC7 - Audio cue on task completion**
-   - Given aggregated totalActiveCount transitions from >0 to 0, when the audio controller is activated, then a single chime is scheduled via Web Audio API (AudioContext running, no duplicate plays within the same transition).
-   - Given AudioContext activation fails, the system logs a warning and suppresses repeated retries until next activation attempt.
+- Попытки усложнить ActivityScanner (новые конвейеры, дополнительная иерархия детекторов) без согласования → блокируем задачу, консультируемся с заказчиком и обновляем план тестирования.

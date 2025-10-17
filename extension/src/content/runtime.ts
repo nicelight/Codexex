@@ -12,7 +12,6 @@ import {
   type ChromeLogger,
 } from '../shared/chrome';
 import { ActivityScanner, type TaskActivitySnapshot } from './activity-scanner';
-import { createDetectorPipeline } from './detectors';
 import { onBackgroundEvent, postToBackground } from './messaging';
 import { ContentAudioController } from './audio';
 import { isCodexTaskDetailsPath, isCodexTasksListingPath, normalizePathname } from '../shared/url';
@@ -66,12 +65,10 @@ export class ContentScriptRuntime {
     ensureRequestIdleCallback(this.window);
     this.verboseLogger = this.createVerbosityAwareLogger();
     this.logger = createChildLogger(this.verboseLogger, 'runtime');
-    const pipeline = createDetectorPipeline({
+    this.scanner = new ActivityScanner({
       document: this.window.document,
-      logger: createChildLogger(this.verboseLogger, 'detectors'),
-      enableCardHeuristic: false,
+      logger: createChildLogger(this.verboseLogger, 'scanner'),
     });
-    this.scanner = new ActivityScanner(pipeline, this.verboseLogger);
     this.mutationObserver = new MutationObserver(() => {
       this.logger.debug('mutation observed');
       this.scheduleScan('mutation');
