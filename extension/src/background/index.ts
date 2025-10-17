@@ -16,17 +16,19 @@ import { generatePopupRenderState } from './popup-state';
 import { registerAlarms } from './alarms';
 import { initializeNotifications } from './notifications';
 import { canonicalizeCodexUrl } from '../shared/url';
+import { initializeSettingsController } from './settings-controller';
 
 const VERBOSE_KEY = 'codex.tasks.verbose';
 
 const chrome = resolveChrome();
 const { logger: rootLogger } = createVerbosityAwareLogger(chrome);
-const aggregator = initializeAggregator({ chrome, logger: rootLogger });
+const settingsController = initializeSettingsController({ chrome, logger: rootLogger });
+const aggregator = initializeAggregator({ chrome, logger: rootLogger, settings: settingsController });
 
 initializeNotifications(aggregator, { chrome, logger: rootLogger });
 initializeActionIndicator(aggregator, { chrome, logger: rootLogger });
 initializeAudioTrigger(aggregator, { chrome, logger: rootLogger });
-registerAlarms(aggregator, { chrome, logger: rootLogger });
+registerAlarms(aggregator, { chrome, logger: rootLogger, settings: settingsController });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   handleRuntimeMessage(aggregator, createChildLogger(rootLogger, 'runtime'), message, sender)
@@ -108,6 +110,7 @@ export async function handleRuntimeMessage(
 
 function createVerbosityAwareLogger(chromeRef: ChromeLike): { logger: ChromeLogger } {
   let verbose = false;
+  /* eslint-disable no-console */
   const consoleLike = {
     debug: (...args: unknown[]) => {
       if (verbose) {
@@ -118,6 +121,7 @@ function createVerbosityAwareLogger(chromeRef: ChromeLike): { logger: ChromeLogg
     warn: (...args: unknown[]) => console.warn(...args),
     error: (...args: unknown[]) => console.error(...args),
   } satisfies Pick<Console, 'debug' | 'info' | 'warn' | 'error'>;
+  /* eslint-enable no-console */
   const logger = createLogger('codex-background', consoleLike);
 
   void refreshVerboseFlag();

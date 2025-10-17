@@ -1,4 +1,4 @@
-import type { AggregatorChangeEvent, BackgroundAggregator } from './aggregator';
+import type { BackgroundAggregator } from './aggregator';
 import type { AggregatedTabsState } from '../shared/contracts';
 import {
   createChildLogger,
@@ -40,22 +40,19 @@ type AudioEventPayload =
 
 class AudioTrigger {
   private disposed = false;
-  private readonly unsubscribe: () => void;
+  private readonly idleUnsubscribe: () => void;
   private readonly storageListener: StorageChangeListener;
   private soundEnabled = SETTINGS_DEFAULTS.sound;
   private soundVolume = SETTINGS_DEFAULTS.soundVolume;
   private settingsInitialized = false;
-  private waitingForIdle = false;
-  private debounceTimer: ReturnType<typeof setTimeout> | undefined;
-  private debounceTarget = 0;
 
   constructor(
     private readonly aggregator: BackgroundAggregator,
     private readonly chrome: ChromeLike,
     private readonly logger: ChromeLogger,
   ) {
-    this.unsubscribe = aggregator.onStateChange((event) => {
-      void this.handleStateChange(event);
+    this.idleUnsubscribe = aggregator.onIdleSettled((state) => {
+      void this.handleIdleSettled(state);
     });
     this.storageListener = (changes, areaName) => {
       if (this.disposed || areaName !== 'sync') {
@@ -86,9 +83,8 @@ class AudioTrigger {
       return;
     }
     this.disposed = true;
-    this.unsubscribe();
+    this.idleUnsubscribe();
     this.chrome.storage.onChanged.removeListener(this.storageListener);
-    this.clearDebounceTimer();
   }
 
   private async refreshSettings(): Promise<void> {
@@ -122,27 +118,6 @@ class AudioTrigger {
     }
   }
 
-  private async handleStateChange(event: AggregatorChangeEvent): Promise<void> {
-    if (this.disposed) {
-      return;
-    }
-    const previousTotal = event.previous.lastTotal ?? 0;
-    const nextTotal = event.current.lastTotal ?? 0;
-    if (nextTotal > 0) {
-      this.waitingForIdle = false;
-      this.clearDebounceTimer();
-      return;
-    }
-    if (previousTotal > 0 && nextTotal === 0) {
-      this.waitingForIdle = true;
-      await this.tryTriggerChime(event.current);
-      return;
-    }
-    if (this.waitingForIdle && nextTotal === 0) {
-      await this.tryTriggerChime(event.current);
-    }
-  }
-
   private async broadcastSettingsUpdate(): Promise<void> {
     const event: AudioEventPayload = {
       type: 'AUDIO_SETTINGS_UPDATE',
@@ -166,53 +141,14 @@ class AudioTrigger {
     await this.sendTabMessages(event);
   }
 
-  private async tryTriggerChime(state?: AggregatedTabsState): Promise<void> {
-    if (this.disposed || !this.waitingForIdle) {
+  private async handleIdleSettled(state: AggregatedTabsState): Promise<void> {
+    if (this.disposed) {
       return;
     }
-    const snapshot = state ?? (await this.aggregator.getSnapshot());
-    if (snapshot.lastTotal !== 0 || !allCountsZero(snapshot)) {
-      this.waitingForIdle = false;
-      this.clearDebounceTimer();
+    if (state.lastTotal !== 0 || !allCountsZero(state)) {
       return;
     }
-    if (snapshot.debounce.since === 0) {
-      this.waitingForIdle = false;
-      this.clearDebounceTimer();
-      await this.broadcastAudioChime();
-      return;
-    }
-    const target = snapshot.debounce.since + snapshot.debounce.ms;
-    const now = Date.now();
-    if (now >= target) {
-      this.waitingForIdle = false;
-      this.clearDebounceTimer();
-      await this.broadcastAudioChime();
-      return;
-    }
-    this.scheduleDebounceTimer(target, now);
-  }
-
-  private scheduleDebounceTimer(target: number, now: number): void {
-    if (this.debounceTimer && this.debounceTarget === target) {
-      return;
-    }
-    this.clearDebounceTimer();
-    const delay = Math.max(0, target - now);
-    this.debounceTarget = target;
-    this.debounceTimer = setTimeout(() => {
-      this.debounceTimer = undefined;
-      this.debounceTarget = 0;
-      void this.tryTriggerChime();
-    }, delay);
-  }
-
-  private clearDebounceTimer(): void {
-    if (this.debounceTimer) {
-      clearTimeout(this.debounceTimer);
-      this.debounceTimer = undefined;
-    }
-    this.debounceTarget = 0;
+    await this.broadcastAudioChime();
   }
 
   private async sendRuntimeMessage(event: AudioEventPayload): Promise<void> {

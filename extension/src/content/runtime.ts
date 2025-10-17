@@ -126,6 +126,7 @@ export class ContentScriptRuntime {
   }
 
   private createVerbosityAwareLogger(): ChromeLogger {
+    /* eslint-disable no-console */
     const consoleLike = {
       debug: (...args: unknown[]) => {
         if (this.verbose) {
@@ -136,6 +137,7 @@ export class ContentScriptRuntime {
       warn: (...args: unknown[]) => console.warn(...args),
       error: (...args: unknown[]) => console.error(...args),
     } satisfies Pick<Console, 'debug' | 'info' | 'warn' | 'error'>;
+    /* eslint-enable no-console */
     return createLogger('codex-content', consoleLike);
   }
 

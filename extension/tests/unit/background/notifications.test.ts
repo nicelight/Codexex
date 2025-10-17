@@ -7,6 +7,7 @@ import {
 } from '../../../src/shared/chrome';
 import { initializeAggregator } from '../../../src/background/aggregator';
 import { initializeNotifications } from '../../../src/background/notifications';
+import { initializeSettingsController } from '../../../src/background/settings-controller';
 
 describe('background notifications', () => {
   let chromeMock: ChromeMock;
@@ -24,8 +25,14 @@ describe('background notifications', () => {
     setChromeInstance(undefined);
   });
 
+  function createAggregatorInstance(options: Partial<Parameters<typeof initializeAggregator>[0]> = {}) {
+    const settings = initializeSettingsController({ chrome: chromeMock });
+    const aggregator = initializeAggregator({ chrome: chromeMock, ...options, settings });
+    return aggregator;
+  }
+
   it('creates a notification after the debounce window elapses', async () => {
-    const aggregator = initializeAggregator({ chrome: chromeMock, now: () => currentTime });
+    const aggregator = createAggregatorInstance({ now: () => currentTime });
     await aggregator.ready;
 
     const sender = { tab: { id: 1, title: 'Codex' } } as chrome.runtime.MessageSender;
@@ -45,7 +52,6 @@ describe('background notifications', () => {
     const createSpy = vi.spyOn(chromeMock.notifications, 'create');
     const controller = initializeNotifications(aggregator, {
       chrome: chromeMock,
-      now: () => currentTime,
     });
 
     currentTime = 14_000;
@@ -59,7 +65,7 @@ describe('background notifications', () => {
   });
 
   it('cancels notification timer when activity resumes', async () => {
-    const aggregator = initializeAggregator({ chrome: chromeMock, now: () => currentTime });
+    const aggregator = createAggregatorInstance({ now: () => currentTime });
     await aggregator.ready;
 
     const sender = { tab: { id: 5, title: 'Codex' } } as chrome.runtime.MessageSender;
@@ -79,7 +85,6 @@ describe('background notifications', () => {
     const createSpy = vi.spyOn(chromeMock.notifications, 'create');
     const controller = initializeNotifications(aggregator, {
       chrome: chromeMock,
-      now: () => currentTime,
     });
 
     currentTime = 2_000;
@@ -92,7 +97,7 @@ describe('background notifications', () => {
   });
 
   it('clears existing notifications when tasks become active again', async () => {
-    const aggregator = initializeAggregator({ chrome: chromeMock, now: () => currentTime });
+    const aggregator = createAggregatorInstance({ now: () => currentTime });
     await aggregator.ready;
 
     const sender = { tab: { id: 9, title: 'Codex' } } as chrome.runtime.MessageSender;
@@ -114,7 +119,6 @@ describe('background notifications', () => {
 
     const controller = initializeNotifications(aggregator, {
       chrome: chromeMock,
-      now: () => currentTime,
     });
 
     currentTime = 14_000;
@@ -132,7 +136,7 @@ describe('background notifications', () => {
 
   it('uses localized strings from i18n when scheduling notifications', async () => {
     chromeMock.i18n.getUILanguage = () => 'ru-RU';
-    const aggregator = initializeAggregator({ chrome: chromeMock, now: () => currentTime });
+    const aggregator = createAggregatorInstance({ now: () => currentTime });
     await aggregator.ready;
 
     const sender = { tab: { id: 11, title: 'Codex' } } as chrome.runtime.MessageSender;
@@ -152,7 +156,6 @@ describe('background notifications', () => {
     const createSpy = vi.spyOn(chromeMock.notifications, 'create');
     const controller = initializeNotifications(aggregator, {
       chrome: chromeMock,
-      now: () => currentTime,
     });
 
     currentTime = 16_000;

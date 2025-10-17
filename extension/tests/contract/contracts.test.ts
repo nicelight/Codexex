@@ -21,6 +21,7 @@ import {
 import type { ChromeMock } from '@/shared/chrome';
 import { getSessionStateKey } from '@/shared/storage';
 import { initializeAggregator, type BackgroundAggregator } from '@/background/aggregator';
+import { initializeSettingsController } from '@/background/settings-controller';
 import { generatePopupRenderState } from '@/background/popup-state';
 import {
   type ChromeTestEnvironment,
@@ -57,6 +58,11 @@ async function loadSchema(relativePath: string): Promise<unknown> {
   const absolute = path.join(CONTRACTS_DIR, relativePath);
   const content = await readFile(absolute, 'utf-8');
   return JSON.parse(content) as unknown;
+}
+
+function createAggregator(chromeMock: ChromeMock): BackgroundAggregator {
+  const settings = initializeSettingsController({ chrome: chromeMock });
+  return initializeAggregator({ chrome: chromeMock, settings });
 }
 
 const BASE_URL = 'http://localhost';
@@ -229,7 +235,7 @@ describe('JSON schema contracts', () => {
     const ajv = createAjvInstance();
     const validate = compileSchema<AggregatedTabsState>(ajv, schema);
 
-    const aggregator = initializeAggregator({ chrome: chromeMock });
+    const aggregator = createAggregator(chromeMock);
     await aggregator.ready;
 
     const update: ContentScriptTasksUpdate = {
@@ -254,7 +260,7 @@ describe('JSON schema contracts', () => {
     const ajv = createAjvInstance();
     const validate = compileSchema(ajv, schema);
 
-    const aggregator = initializeAggregator({ chrome: chromeMock });
+    const aggregator = createAggregator(chromeMock);
     await aggregator.ready;
 
     const update: ContentScriptTasksUpdate = {
@@ -289,7 +295,7 @@ describe('JSON schema contracts', () => {
     };
     expect(validate(heartbeat)).toBe(true);
 
-    const aggregator = initializeAggregator({ chrome: chromeMock });
+    const aggregator = createAggregator(chromeMock);
     await aggregator.ready;
     await aggregator.handleHeartbeat(heartbeat, {
       tab: { id: 4, title: 'Heartbeat tab', url: heartbeat.origin },
@@ -323,7 +329,7 @@ describe('OpenAPI adapter contracts', () => {
   });
 
   it('serves responses matching OpenAPI schemas', async () => {
-    const aggregator = initializeAggregator({ chrome: chromeMock });
+    const aggregator = createAggregator(chromeMock);
     await aggregator.ready;
 
     useBackgroundHttpHandlers({
@@ -384,7 +390,7 @@ describe('OpenAPI adapter contracts', () => {
   });
 
   it('rejects invalid payloads with descriptive errors', async () => {
-    const aggregator = initializeAggregator({ chrome: chromeMock });
+    const aggregator = createAggregator(chromeMock);
     await aggregator.ready;
 
     useBackgroundHttpHandlers({

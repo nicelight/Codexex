@@ -72,9 +72,14 @@ flowchart LR
 
 ## Настройки
 
-В MVP v0.1.0 пользовательских настроек нет: антидребезг (`debounceMs = 12000`) и защита от авто‑выгрузки вкладок (`autoDiscardableOff = true`) зашиты в коде background‑скрипта.
+Фоновые сервисы читают настройки из `chrome.storage.sync` и применяют их без перезагрузки:
 
-⚙️ В планах на v0.2.0 — вынести параметры в `chrome.storage.sync`, добавить простой UI в popup/options и опциональный звуковой сигнал. Хотим дать возможность настраивать `debounceMs`, переключать `autoDiscardable`, включать звук и бейдж со счётчиком.
+* `debounceMs` — длительность окна антидребезга (0–60000 мс, по умолчанию 12000).
+* `autoDiscardableOff` — запрещает (`true`) или разрешает (`false`) авто‑выгрузку вкладок Codex.
+* `sound` / `soundVolume` — включают аудио‑сигнал и управляют громкостью.
+* `showBadgeCount` — резерв под бейдж иконки.
+
+UI для изменения значений в разработке; до релиза можно задавать параметры вручную через DevTools (`chrome.storage.sync.set`).
 
 ---
 
@@ -127,11 +132,8 @@ sequenceDiagram
     CS->>CS: ActivityScanner.scan()
     CS->>BG: TASKS_UPDATE(active=false,count=0,signals)
     BG->>BG: applyDebounceTransition()
-    BG->>CTRL: state change (lastTotal→0, debounce since>0)
-    Note right of CTRL: ждём debounce ms
-    CTRL->>BG: verify snapshot still idle
+    BG->>CTRL: idle settled event (после debounce)
     CTRL->>USER: Chrome notification +/− звук
-    CTRL->>BG: clearDebounceIfIdle()
 ```
 
 ---

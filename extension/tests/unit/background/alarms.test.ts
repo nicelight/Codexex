@@ -11,6 +11,8 @@ import {
   flushMicrotasks,
   setupChromeTestEnvironment,
 } from '../../support/environment';
+import type { BackgroundSettingsController } from '../../../src/background/settings-controller';
+import { SETTINGS_DEFAULTS } from '../../../src/shared/settings';
 
 describe('background alarms', () => {
   let chromeMock: ReturnType<typeof setupChromeTestEnvironment>['chrome'];
@@ -98,10 +100,51 @@ describe('background alarms', () => {
     expect(aggregator.evaluateHeartbeatStatuses).toHaveBeenCalled();
     expect(chromeMock.tabs.sendMessage).toHaveBeenCalledWith(7, { type: 'PING' });
   });
+
+  it('restores autoDiscardable when user disables protection', async () => {
+    const state: AggregatedTabsState = {
+      tabs: {
+        '10': {
+          origin: 'https://chatgpt.com/codex',
+          title: 'Codex',
+          count: 0,
+          active: false,
+          updatedAt: 0,
+          lastSeenAt: 0,
+          heartbeat: {
+            lastReceivedAt: 0,
+            expectedIntervalMs: 15_000,
+            status: 'OK',
+            missedCount: 0,
+          },
+          signals: [],
+        },
+      },
+      lastTotal: 0,
+      debounce: { ms: 12_000, since: 0 },
+    };
+
+    const aggregator = createAggregatorStub(state);
+    const settings = createSettingsStub(true);
+    registerAlarms(aggregator, { chrome: chromeMock, settings });
+
+    await flushMicrotasks();
+    expect(chromeMock.tabs.update).toHaveBeenCalledWith(10, { autoDiscardable: false });
+
+    chromeMock.tabs.update.mockClear();
+    settings.emit(false);
+    await flushMicrotasks();
+
+    expect(chromeMock.tabs.update).toHaveBeenCalledWith(10, { autoDiscardable: true });
+  });
 });
 
 type AggregatorStub = BackgroundAggregator & {
   emit: (event: AggregatorChangeEvent) => void;
+};
+
+type SettingsStub = BackgroundSettingsController & {
+  emit(value: boolean): void;
 };
 
 function createAggregatorStub(initial: AggregatedTabsState): AggregatorStub {
@@ -113,6 +156,7 @@ function createAggregatorStub(initial: AggregatedTabsState): AggregatorStub {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
+    onIdleSettled: vi.fn(() => () => undefined),
     getSnapshot: vi.fn(async () => snapshot),
     getTrackedTabIds: vi.fn(async () => Object.keys(snapshot.tabs).map(Number)),
     handleTasksUpdate: vi.fn(async () => undefined),
@@ -120,12 +164,31 @@ function createAggregatorStub(initial: AggregatedTabsState): AggregatorStub {
     handleTabRemoved: vi.fn(async () => undefined),
     handleTabNavigated: vi.fn(async () => undefined),
     evaluateHeartbeatStatuses: vi.fn(async () => [] as number[]),
-    clearDebounceIfIdle: vi.fn(async () => false),
     emit(event) {
       listeners.forEach((listener) => listener(event));
     },
   };
   return aggregator as AggregatorStub;
+}
+
+function createSettingsStub(initial: boolean): SettingsStub {
+  let snapshot = { ...SETTINGS_DEFAULTS, autoDiscardableOff: initial };
+  const listeners = new Set<(settings: typeof snapshot) => void>();
+  const controller: Partial<SettingsStub> = {
+    ready: Promise.resolve(),
+    getSnapshot() {
+      return { ...snapshot };
+    },
+    onChange(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    emit(value: boolean) {
+      snapshot = { ...snapshot, autoDiscardableOff: value };
+      listeners.forEach((listener) => listener({ ...snapshot }));
+    },
+  };
+  return controller as SettingsStub;
 }
 
 function emitChange(

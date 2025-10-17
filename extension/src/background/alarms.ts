@@ -7,6 +7,8 @@ import {
   type ChromeLogger,
 } from '../shared/chrome';
 import type { AggregatedTabsState } from '../shared/contracts';
+import type { BackgroundSettingsController } from './settings-controller';
+import { SETTINGS_DEFAULTS } from '../shared/settings';
 import type { BackgroundAggregator } from './aggregator';
 
 const ALARM_NAME = 'codex-poll';
@@ -15,6 +17,7 @@ const ALARM_PERIOD_MINUTES = 1;
 export interface AlarmsOptions {
   readonly chrome?: ChromeLike;
   readonly logger?: ChromeLogger;
+  readonly settings?: BackgroundSettingsController;
 }
 
 export interface AlarmsController {
@@ -28,11 +31,19 @@ export function registerAlarms(
   const chrome = options.chrome ?? resolveChrome();
   const baseLogger = options.logger ?? createLogger('codex-background');
   const logger = createChildLogger(baseLogger, 'alarms');
+  const settings = options.settings;
 
   chrome.alarms.create(ALARM_NAME, { periodInMinutes: ALARM_PERIOD_MINUTES });
   logger.info('alarm scheduled', { name: ALARM_NAME, periodMinutes: ALARM_PERIOD_MINUTES });
 
   const protectedTabs = new Set<number>();
+  let autoDiscardableOff = settings?.getSnapshot().autoDiscardableOff ?? SETTINGS_DEFAULTS.autoDiscardableOff;
+  const unsubscribeSettings = settings
+    ? settings.onChange((next) => {
+        autoDiscardableOff = next.autoDiscardableOff;
+        void applyCurrentState();
+      })
+    : undefined;
 
   const unsubscribe = aggregator.onStateChange((event) => {
     void ensureAutoDiscardable(event.current).catch((error) => {
@@ -42,23 +53,30 @@ export function registerAlarms(
       (event.reason === 'tab-removed' || event.reason === 'tab-navigated') &&
       typeof event.tabId === 'number'
     ) {
-      protectedTabs.delete(event.tabId);
+      void restoreAutoDiscardable(event.tabId);
     }
   });
 
   void aggregator.ready
-    .then(() => aggregator.getSnapshot())
-    .then((snapshot) => ensureAutoDiscardable(snapshot))
+    .then(() => applyCurrentState())
     .catch((error) => {
       logger.error('failed to apply autoDiscardable on startup', error);
     });
 
-  void aggregator
-    .getSnapshot()
-    .then((snapshot) => ensureAutoDiscardable(snapshot))
-    .catch((error) => {
+  if (settings) {
+    void settings.ready
+      .then(() => {
+        autoDiscardableOff = settings.getSnapshot().autoDiscardableOff;
+        return applyCurrentState();
+      })
+      .catch((error) => {
+        logger.warn('failed to sync autoDiscardable settings', error);
+      });
+  } else {
+    void applyCurrentState().catch((error) => {
       logger.warn('failed to apply autoDiscardable on initial snapshot', error);
     });
+  }
 
   const alarmListener: AlarmListener = (alarm) => {
     if (alarm.name !== ALARM_NAME) {
@@ -76,27 +94,58 @@ export function registerAlarms(
       chrome.alarms.onAlarm.removeListener(alarmListener);
       unsubscribe();
       protectedTabs.clear();
+      unsubscribeSettings?.();
     },
   };
 
   async function ensureAutoDiscardable(state: AggregatedTabsState): Promise<void> {
-    for (const tabId of Object.keys(state.tabs).map(Number)) {
-      if (protectedTabs.has(tabId)) {
-        continue;
+    if (autoDiscardableOff) {
+      for (const tabId of Object.keys(state.tabs).map(Number)) {
+        if (protectedTabs.has(tabId)) {
+          continue;
+        }
+        try {
+          await chrome.tabs.update(tabId, { autoDiscardable: false });
+          protectedTabs.add(tabId);
+          logger.debug('autoDiscardable disabled', { tabId });
+        } catch (error) {
+          logger.warn('autoDiscardable update failed', { tabId, error });
+        }
       }
-      try {
-        await chrome.tabs.update(tabId, { autoDiscardable: false });
-        protectedTabs.add(tabId);
-        logger.debug('autoDiscardable disabled', { tabId });
-      } catch (error) {
-        logger.warn('autoDiscardable update failed', { tabId, error });
+      for (const tabId of Array.from(protectedTabs)) {
+        if (!state.tabs[String(tabId)]) {
+          protectedTabs.delete(tabId);
+        }
       }
+      return;
     }
     for (const tabId of Array.from(protectedTabs)) {
-      if (!state.tabs[String(tabId)]) {
-        protectedTabs.delete(tabId);
+      try {
+        await chrome.tabs.update(tabId, { autoDiscardable: true });
+        logger.debug('autoDiscardable restored', { tabId });
+      } catch (error) {
+        logger.warn('autoDiscardable restore failed', { tabId, error });
       }
+      protectedTabs.delete(tabId);
     }
+  }
+
+  async function restoreAutoDiscardable(tabId: number): Promise<void> {
+    if (!protectedTabs.has(tabId)) {
+      return;
+    }
+    protectedTabs.delete(tabId);
+    try {
+      await chrome.tabs.update(tabId, { autoDiscardable: true });
+      logger.debug('autoDiscardable restored', { tabId });
+    } catch (error) {
+      logger.warn('autoDiscardable restore failed', { tabId, error });
+    }
+  }
+
+  async function applyCurrentState(): Promise<void> {
+    const snapshot = await aggregator.getSnapshot();
+    await ensureAutoDiscardable(snapshot);
   }
 
   async function handleAlarmTick(): Promise<void> {

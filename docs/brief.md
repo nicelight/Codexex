@@ -70,13 +70,12 @@
 * **background (service worker)**:
 
   * Агрегирует состояния всех вкладок в `chrome.storage.session['codex.tasks.state']`, восстанавливая их при перезапуске и валидируя по JSON Schema.
-  * Считает `totalActiveCount` (сумма активных по всем вкладкам) и поддерживает антидребезг (`debounce.since`) с жёстко заданным окном 12 секунд (значение ограничивается диапазоном 0–60000 мс).
+* Считает `totalActiveCount` (сумма активных по всем вкладкам) и поддерживает антидребезг (`debounce.since`), беря длительность окна из `chrome.storage.sync.debounceMs` через контроллер настроек (значение нормализуется к диапазону 0–60000 мс и применяется на лету при изменении).
   * Если предыдущее значение `> 0`, новое `= 0` и выдержан антидребезг → `chrome.notifications.create(...)` с локализованными строками (RU/EN) и последующим сбросом окна.
   * Таймер `chrome.alarms` (каждую минуту) вызывает `aggregator.evaluateHeartbeatStatuses()`: при устаревших heartbeat помечает вкладки как `STALE` и отправляет `PING` через `chrome.tabs.sendMessage`.
-  * Следит за жизненным циклом вкладок: `tabs.onRemoved` очищает состояние, а при любых изменениях агрегированного состояния повторно применяет `chrome.tabs.update({ autoDiscardable: false })` ко всем отслеживаемым вкладкам (настройка не конфигурируема в v0.1.0).
+* Следит за жизненным циклом вкладок: `tabs.onRemoved` очищает состояние, а при любых изменениях агрегированного состояния применяет `chrome.tabs.update({ autoDiscardable: autoDiscardableOff ? false : true })` ко всем отслеживаемым вкладкам, где `autoDiscardableOff` — актуальное значение из `chrome.storage.sync`; переключение настройки мгновенно включает или отключает защиту от авто‑выгрузки.
   * Управляет уровнем логирования через флаг `chrome.storage.session['codex.tasks.verbose']` (обновляется при изменении storage).
-  * **MVP v0.1.0**: работает на жёстко заданных параметрах (`debounceMs = 12000`, `autoDiscardableOff = true`), не показывает бейдж и не воспроизводит звук.
-  * **v0.2.0+ (план)**: вводит пользовательские настройки (`debounceMs`, `autoDiscardableOff`, `sound`, `showBadgeCount`) и управление бейджем/звуком.
+* Контроллер настроек синхронизирует `debounceMs`, `autoDiscardableOff`, `sound`, `soundVolume` и `showBadgeCount` из `chrome.storage.sync`; агрегатор, уведомления, аудио‑контроллер и индикатор действия реагируют на изменения без перезагрузки (UI для редактирования значений планируется отдельно).
 
 * **popup**:
 
@@ -182,7 +181,7 @@ Background хранит `signals` в виде последнего снимка 
 
 ### 5.3. Настройки пользователя (UI → storage.sync)
 
-> **Статус:** вступает в силу с релиза v0.2.0. В MVP v0.1.0 используются жёстко заданные значения (`debounceMs`, `autoDiscardableOff`) без UI.
+> **Статус:** фоновые сервисы уже читают и применяют настройки из `chrome.storage.sync`; UI для редактирования остаётся в бэклоге (можно задавать значения через DevTools/Sync API вручную).
 
 ```json
 {
@@ -198,9 +197,7 @@ Background хранит `signals` в виде последнего снимка 
 }
 ```
 
-`autoDiscardableOff = true` трактуется как запрет на авто‑выгрузку вкладок Codex: background применяет `chrome.tabs.update({ autoDiscardable: false })` ко всем отслеживаемым вкладкам при каждом изменении агрегированного состояния. Когда настройка будет выключена (`autoDiscardableOff = false`), фон должен вернуть стандартное поведение браузера и вызвать `chrome.tabs.update({ autoDiscardable: true })` для затронутых вкладок (поведение запланировано для v0.2.0+).
-
-> В MVP v0.1.0 используются жёстко заданные значения `debounceMs = 12000`, `autoDiscardableOff = true`; поля `sound` и `showBadgeCount` остаются зарезервированными до релиза v0.2.0.
+`autoDiscardableOff = true` трактуется как запрет на авто‑выгрузку вкладок Codex: background применяет `chrome.tabs.update({ autoDiscardable: false })` ко всем отслеживаемым вкладкам при каждом изменении агрегированного состояния. При выключении настройки (`autoDiscardableOff = false`) фон возвращает стандартное поведение браузера и вызывает `chrome.tabs.update({ autoDiscardable: true })` для затронутых вкладок.
 
 ---
 
@@ -288,7 +285,7 @@ Background хранит `signals` в виде последнего снимка 
 * Background хранит `state` с полями `tabs`, `lastTotal` и `debounce` в `chrome.storage.session['codex.tasks.state']`; `debounce.since` фиксирует момент перехода в потенциально пустое состояние.
 * При каждом `TASKS_UPDATE` агрегатор пересчитывает `lastTotal` как сумму `tab.count`. Если сумма падает с `>0` до `0`, устанавливается `debounce.since`; при появлении задач окно сбрасывается.
 * В MVP (v0.1.0) параметры антидребезга и запрета авто‑выгрузки заданы константами (`debounceMs = 12_000`, `autoDiscardableOff = true`). Значения из `chrome.storage.sync` пока не применяются (см. план v0.2.0+).
-* Модуль `notifications` подписывается на `aggregator.onStateChange`, отслеживает `debounce.since` и `lastTotal`. По истечении окна проверяет, что все `tab.count == 0`, после чего создаёт уведомление и вызывает `aggregator.clearDebounceIfIdle()`.
+* Модуль `notifications` подписывается на `aggregator.onIdleSettled` и получает готовый снимок состояния, когда окно антидребезга завершено. После проверки на отсутствие активных задач формирует уведомление.
 * Контроллер `alarms` поддерживает `autoDiscardable`: при каждом изменении `AggregatedState` и при старте выполняет `chrome.tabs.update(tabId, { autoDiscardable: false })` для известных вкладок, удаляя ID при `tab-removed`.
 * Таймер `chrome.alarms` (`codex-poll`, 1 минута) вызывает `aggregator.evaluateHeartbeatStatuses()`, помечает вкладки как `STALE` и отправляет `PING` через `chrome.tabs.sendMessage` только тем tabId, которые давно не отправляли heartbeat.
 * Логика сканирования основана на `MutationObserver` с `childList`, `subtree` и `characterData`: любые изменения структуры или текста карточек перезапускают скан с троттлингом ≥1 раз в секунду.
