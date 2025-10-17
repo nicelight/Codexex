@@ -67,6 +67,13 @@ export function initializeActionIndicator(
   const locale = resolveLocale(chrome);
   const tooltipFormatter = TOOLTIP_BY_LOCALE[locale] ?? TOOLTIP_BY_LOCALE.en;
   const canRenderIcons = hasIconRenderingSupport();
+  const setBadgeBackgroundColor = actionApi.setBadgeBackgroundColor.bind(actionApi);
+  const setBadgeText = actionApi.setBadgeText.bind(actionApi);
+  const setTitle = actionApi.setTitle ? actionApi.setTitle.bind(actionApi) : undefined;
+  const setIcon = actionApi.setIcon ? actionApi.setIcon.bind(actionApi) : undefined;
+  const setBadgeTextColor = actionApi.setBadgeTextColor
+    ? actionApi.setBadgeTextColor.bind(actionApi)
+    : undefined;
 
   if (!canRenderIcons) {
     logger.debug('OffscreenCanvas/ImageData unavailable; falling back to badge text');
@@ -79,19 +86,19 @@ export function initializeActionIndicator(
     const visual = deriveBadgeVisual(state.lastTotal ?? 0, {
       hasCodexTabs: Object.keys(state.tabs).length > 0,
     });
-    await safeCall(() => actionApi.setBadgeBackgroundColor({ color: BADGE_BACKGROUND }));
-    await safeCall(() => actionApi.setBadgeText({ text: '' }));
-    if (actionApi.setTitle) {
-      await safeCall(() => actionApi.setTitle({ title: tooltipFormatter(visual.text) }));
+    await safeCall(() => setBadgeBackgroundColor({ color: BADGE_BACKGROUND }));
+    await safeCall(() => setBadgeText({ text: '' }));
+    if (setTitle) {
+      await safeCall(() => setTitle({ title: tooltipFormatter(visual.text) }));
     }
-    if (canRenderIcons && actionApi.setIcon) {
+    if (canRenderIcons && setIcon) {
       const iconSet = createTextIconSet(visual.text, visual.color, logger);
       if (iconSet) {
-        await safeCall(() => actionApi.setIcon({ imageData: iconSet }));
+        await safeCall(() => setIcon({ imageData: iconSet }));
       }
-    } else if (actionApi.setBadgeTextColor) {
-      await safeCall(() => actionApi.setBadgeTextColor({ color: visual.color }));
-      await safeCall(() => actionApi.setBadgeText({ text: visual.text }));
+    } else if (setBadgeTextColor) {
+      await safeCall(() => setBadgeTextColor({ color: visual.color }));
+      await safeCall(() => setBadgeText({ text: visual.text }));
     }
   }, UPDATE_THROTTLE_MS);
 

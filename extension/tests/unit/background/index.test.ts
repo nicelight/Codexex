@@ -42,6 +42,7 @@ function createAggregatorMock(snapshot?: AggregatedTabsState): BackgroundAggrega
     handleTasksUpdate: vi.fn(async () => undefined),
     handleHeartbeat: vi.fn(async () => undefined),
     handleTabRemoved: vi.fn(async () => undefined),
+    handleTabNavigated: vi.fn(async () => undefined),
     evaluateHeartbeatStatuses: vi.fn(async () => []),
   };
 }

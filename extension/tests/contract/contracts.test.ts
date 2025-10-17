@@ -38,26 +38,28 @@ function createAjvInstance(): Ajv {
   return ajv;
 }
 
-function compileSchema<T extends { $id?: string }>(
+type JsonSchema = { $id?: string } & Record<string, unknown>;
+
+function compileSchema<Data>(
   ajv: Ajv,
-  schema: T,
-): ValidateFunction<T> {
+  schema: JsonSchema,
+): ValidateFunction<Data> {
   const schemaId = schema.$id;
   if (schemaId) {
     const existing = ajv.getSchema(schemaId);
     if (existing) {
-      return existing as ValidateFunction<T>;
+      return existing as ValidateFunction<Data>;
     }
   }
-  return ajv.compile(schema) as ValidateFunction<T>;
+  return ajv.compile(schema) as ValidateFunction<Data>;
 }
 
 const CONTRACTS_DIR = path.join(ROOT_DIR, '..', '..', 'contracts');
 
-async function loadSchema(relativePath: string): Promise<unknown> {
+async function loadSchema(relativePath: string): Promise<JsonSchema> {
   const absolute = path.join(CONTRACTS_DIR, relativePath);
   const content = await readFile(absolute, 'utf-8');
-  return JSON.parse(content) as unknown;
+  return JSON.parse(content) as JsonSchema;
 }
 
 function createAggregator(chromeMock: ChromeMock): BackgroundAggregator {

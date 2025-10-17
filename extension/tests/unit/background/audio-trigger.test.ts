@@ -6,8 +6,8 @@ import {
   setChromeInstance,
   type ChromeMock,
 } from '../../../src/shared/chrome';
-import type { AggregatedTabsState, AggregatorChangeEvent } from '../../../src/shared/contracts';
-import type { BackgroundAggregator } from '../../../src/background/aggregator';
+import type { AggregatedTabsState } from '../../../src/shared/contracts';
+import type { AggregatorChangeEvent, BackgroundAggregator } from '../../../src/background/aggregator';
 
 class StubAggregator implements BackgroundAggregator {
   public readonly ready = Promise.resolve();
@@ -36,6 +36,7 @@ class StubAggregator implements BackgroundAggregator {
   async handleTasksUpdate(): Promise<void> {}
   async handleHeartbeat(): Promise<void> {}
   async handleTabRemoved(): Promise<void> {}
+  async handleTabNavigated(): Promise<void> {}
   async evaluateHeartbeatStatuses(): Promise<number[]> {
     return [];
   }
@@ -63,12 +64,14 @@ class StubAggregator implements BackgroundAggregator {
 
 describe('audio trigger', () => {
   let chromeMock: ChromeMock;
+  let runtimeSendMessageSpy: SpyInstance;
+  let tabsSendMessageSpy: SpyInstance;
 
   beforeEach(() => {
     chromeMock = createMockChrome();
     setChromeInstance(chromeMock);
-    vi.spyOn(chromeMock.runtime, 'sendMessage');
-    vi.spyOn(chromeMock.tabs, 'sendMessage');
+    runtimeSendMessageSpy = vi.spyOn(chromeMock.runtime, 'sendMessage');
+    tabsSendMessageSpy = vi.spyOn(chromeMock.tabs, 'sendMessage');
   });
 
   test('broadcasts AUDIO_CHIME after idle notification', async () => {
@@ -83,8 +86,8 @@ describe('audio trigger', () => {
       soundVolume: 0.2,
     });
 
-    (chromeMock.runtime.sendMessage as SpyInstance).mockClear();
-    (chromeMock.tabs.sendMessage as SpyInstance).mockClear();
+    runtimeSendMessageSpy.mockClear();
+    tabsSendMessageSpy.mockClear();
 
     aggregator.emitIdle(createState({ lastTotal: 0 }));
 
@@ -102,8 +105,8 @@ describe('audio trigger', () => {
     await flushAsync();
     await chromeMock.storage.sync?.set({ sound: false });
 
-    (chromeMock.runtime.sendMessage as SpyInstance).mockClear();
-    (chromeMock.tabs.sendMessage as SpyInstance).mockClear();
+    runtimeSendMessageSpy.mockClear();
+    tabsSendMessageSpy.mockClear();
 
     aggregator.emitIdle(createState({ lastTotal: 0 }));
 
@@ -124,8 +127,8 @@ describe('audio trigger', () => {
 
     await flushAsync();
 
-    (chromeMock.runtime.sendMessage as SpyInstance).mockClear();
-    (chromeMock.tabs.sendMessage as SpyInstance).mockClear();
+    runtimeSendMessageSpy.mockClear();
+    tabsSendMessageSpy.mockClear();
 
     aggregator.emit({
       reason: 'tasks-update',

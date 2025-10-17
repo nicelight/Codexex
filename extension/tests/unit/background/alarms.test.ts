@@ -56,7 +56,7 @@ describe('background alarms', () => {
     await flushMicrotasks();
     expect(chromeMock.tabs.update).toHaveBeenCalledWith(5, { autoDiscardable: false });
 
-    chromeMock.tabs.update.mockClear();
+    vi.mocked(chromeMock.tabs.update).mockClear();
     state.tabs['6'] = {
       ...state.tabs['5'],
       active: false,
@@ -131,7 +131,7 @@ describe('background alarms', () => {
     await flushMicrotasks();
     expect(chromeMock.tabs.update).toHaveBeenCalledWith(10, { autoDiscardable: false });
 
-    chromeMock.tabs.update.mockClear();
+    vi.mocked(chromeMock.tabs.update).mockClear();
     settings.emit(false);
     await flushMicrotasks();
 

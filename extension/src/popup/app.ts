@@ -1,4 +1,4 @@
-import type { PopupRenderState, PopupRenderStateTab } from '../shared/contracts';
+import type { PopupRenderState, PopupRenderStatePopupTab } from '../shared/contracts';
 import { resolveChrome } from '../shared/chrome';
 import { loadUserSettings, saveUserSettings, type NormalizedUserSettings } from '../shared/settings';
 import { getDefaultPopupMessages } from './messages';
@@ -242,7 +242,7 @@ function createContent(state: PopupRenderState, messages: Record<string, string>
 }
 
 function createTabItem(
-  tab: PopupRenderStateTab,
+  tab: PopupRenderStatePopupTab,
   state: PopupRenderState,
   messages: Record<string, string>,
 ): HTMLElement {
@@ -282,7 +282,7 @@ function createTabItem(
   return item;
 }
 
-function createSignalsSection(tab: PopupRenderStateTab, messages: Record<string, string>): HTMLElement {
+function createSignalsSection(tab: PopupRenderStatePopupTab, messages: Record<string, string>): HTMLElement {
   const container = document.createElement('div');
   container.className = 'popup__signals';
 
@@ -314,7 +314,7 @@ function createSignalsSection(tab: PopupRenderStateTab, messages: Record<string,
 }
 
 function formatTabSubtitle(
-  tab: PopupRenderStateTab,
+  tab: PopupRenderStatePopupTab,
   locale: 'en' | 'ru',
   messages: Record<string, string>,
 ): string {

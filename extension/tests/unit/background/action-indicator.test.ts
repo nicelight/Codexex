@@ -90,6 +90,8 @@ class StubAggregator implements BackgroundAggregator {
 
   async handleTabRemoved(): Promise<void> {}
 
+  async handleTabNavigated(): Promise<void> {}
+
   async evaluateHeartbeatStatuses(): Promise<number[]> {
     return [];
   }
@@ -168,10 +170,10 @@ describe('action-indicator', () => {
 
     expect(action.setBadgeText).toHaveBeenCalledWith({ text: '' });
     expect(action.setIcon).toHaveBeenCalled();
-    const iconCall = (action.setIcon as unknown as vi.Mock).mock.calls.pop();
+    const iconCall = (action.setIcon as unknown as ReturnType<typeof vi.fn>).mock.calls.pop();
     expect(iconCall?.[0]?.imageData).toBeDefined();
     expect(action.setTitle).toHaveBeenCalled();
-    const titleCall = (action.setTitle as unknown as vi.Mock).mock.calls.pop();
+    const titleCall = (action.setTitle as unknown as ReturnType<typeof vi.fn>).mock.calls.pop();
     expect(titleCall?.[0]?.title).toContain('9 active Codex tasks');
 
     controller.dispose();

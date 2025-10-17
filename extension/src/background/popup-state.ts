@@ -2,7 +2,7 @@ import {
   assertPopupRenderState,
   type AggregatedTabsState,
   type PopupRenderState,
-  type PopupRenderStateTab,
+  type PopupRenderStatePopupTab,
 } from '../shared/contracts';
 import { resolveChrome, type ChromeLike } from '../shared/chrome';
 import { resolveLocale } from '../shared/locale';
@@ -61,13 +61,16 @@ function deriveAggregatedTotal(total: number): number {
   return normalized;
 }
 
-function mapTabs(state: AggregatedTabsState): PopupRenderStateTab[] {
-  const entries: PopupRenderStateTab[] = [];
+function mapTabs(state: AggregatedTabsState): PopupRenderStatePopupTab[] {
+  const entries: PopupRenderStatePopupTab[] = [];
   for (const [tabKey, tabState] of Object.entries(state.tabs)) {
     const tabId = Number(tabKey);
     if (!Number.isFinite(tabId)) {
       continue;
     }
+    const signals: PopupRenderStatePopupTab['signals'] = tabState.signals
+      ? tabState.signals.map((signal) => ({ ...signal }))
+      : [];
     entries.push({
       tabId,
       title: tabState.title,
@@ -75,7 +78,7 @@ function mapTabs(state: AggregatedTabsState): PopupRenderStateTab[] {
       count: Math.max(0, tabState.count),
       lastSeenAt: tabState.lastSeenAt,
       heartbeatStatus: tabState.heartbeat.status,
-      signals: tabState.signals ? tabState.signals.map((signal) => ({ ...signal })) : [],
+      signals,
     });
   }
   return entries;
