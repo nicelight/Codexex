@@ -1,9 +1,9 @@
 ﻿import {
   assertAggregatedTabsState,
-  type AggregatedDebounceState,
-  type AggregatedHeartbeatState,
-  type AggregatedTabState,
   type AggregatedTabsState,
+  type AggregatedTabsStateDebounceState,
+  type AggregatedTabsStateHeartbeatState,
+  type AggregatedTabsStateTabState,
   type ContentScriptHeartbeat,
   type ContentScriptTasksUpdate,
 } from '../shared/contracts';
@@ -18,6 +18,10 @@ import { getSessionStateKey } from '../shared/storage';
 import { canonicalizeCodexUrl } from '../shared/url';
 import { SETTINGS_DEFAULTS } from '../shared/settings';
 import type { BackgroundSettingsController } from './settings-controller';
+
+type AggregatedTabState = AggregatedTabsStateTabState;
+type AggregatedHeartbeatState = AggregatedTabsStateHeartbeatState;
+type AggregatedDebounceState = AggregatedTabsStateDebounceState;
 
 const FALLBACK_DEBOUNCE_MS = SETTINGS_DEFAULTS.debounceMs;
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 15_000;

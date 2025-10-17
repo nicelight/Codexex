@@ -1,5 +1,12 @@
 import { resolveChrome, type ChromeLogger, createChildLogger } from '../shared/chrome';
 
+type AudioContextConstructor = typeof globalThis.AudioContext;
+
+interface AudioCapableWindow extends Window {
+  AudioContext?: AudioContextConstructor;
+  webkitAudioContext?: AudioContextConstructor;
+}
+
 const AUDIO_RESOURCE = 'media/oh-oh-icq-sound.mp3';
 const DEFAULT_VOLUME = 0.2;
 const ATTACK_TIME = 0.02;
@@ -12,7 +19,7 @@ export interface ContentAudioControllerOptions {
 }
 
 export class ContentAudioController {
-  private readonly window: Window;
+  private readonly window: AudioCapableWindow;
   private readonly logger: ChromeLogger;
   private readonly chrome = resolveChrome();
   private audioContext?: AudioContext;
@@ -27,7 +34,7 @@ export class ContentAudioController {
   private enabled = true;
 
   constructor(options: ContentAudioControllerOptions) {
-    this.window = options.window;
+    this.window = options.window as AudioCapableWindow;
     this.logger = createChildLogger(options.logger, 'audio');
     this.unlockEventHandler = () => {
       this.detachUnlockListeners();
@@ -46,7 +53,8 @@ export class ContentAudioController {
 
   private async unlock(): Promise<void> {
     this.detachUnlockListeners();
-    if (typeof this.window.AudioContext === 'undefined') {
+    const AudioContextCtor = this.window.AudioContext ?? this.window.webkitAudioContext;
+    if (!AudioContextCtor) {
       return;
     }
     if (this.unlocked) {
@@ -54,7 +62,7 @@ export class ContentAudioController {
       return;
     }
     try {
-      this.audioContext = new this.window.AudioContext();
+      this.audioContext = new AudioContextCtor();
       this.gainNode = this.audioContext.createGain();
       this.gainNode.gain.value = 0;
       this.gainNode.connect(this.audioContext.destination);
@@ -131,7 +139,12 @@ export class ContentAudioController {
     if (this.audioBuffer || !this.audioContext) {
       return;
     }
-    const url = this.chrome.runtime.getURL(AUDIO_RESOURCE);
+    const getUrl = this.chrome.runtime.getURL?.bind(this.chrome.runtime);
+    if (!getUrl) {
+      this.logger.debug('audio buffer load skipped: runtime.getURL unavailable');
+      return;
+    }
+    const url = getUrl(AUDIO_RESOURCE);
     try {
       const response = await fetch(url);
       if (!response.ok) {
