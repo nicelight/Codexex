@@ -283,8 +283,9 @@ Background хранит `signals` в виде последнего снимка 
 ## 10. Логика антидребезга и учёт вкладок
 
 * Background хранит `state` с полями `tabs`, `lastTotal` и `debounce` в `chrome.storage.session['codex.tasks.state']`; `debounce.since` фиксирует момент перехода в потенциально пустое состояние.
+* При запуске агрегатор читает снимок из `storage.session`; если данных нет или они не проходят схему, записывает `DEFAULT_STATE` и уведомляет слушателей, чтобы остальные модули получили согласованное начальное состояние.
 * При каждом `TASKS_UPDATE` агрегатор пересчитывает `lastTotal` как сумму `tab.count`. Если сумма падает с `>0` до `0`, устанавливается `debounce.since`; при появлении задач окно сбрасывается.
-* В MVP (v0.1.0) параметры антидребезга и запрета авто‑выгрузки заданы константами (`debounceMs = 12_000`, `autoDiscardableOff = true`). Значения из `chrome.storage.sync` пока не применяются (см. план v0.2.0+).
+* Контроллер настроек загружает `debounceMs`, `autoDiscardableOff`, `sound`, `soundVolume` и `showBadgeCount` из `chrome.storage.sync`, нормализует значения и передаёт их фоновым сервисам (агрегатор, `alarms`, аудио, action indicator). Изменения в `storage.sync` применяются без перезапуска; при ошибках/пустом состоянии используются `SETTINGS_DEFAULTS`.
 * Модуль `notifications` подписывается на `aggregator.onIdleSettled` и получает готовый снимок состояния, когда окно антидребезга завершено. После проверки на отсутствие активных задач формирует уведомление.
 * Контроллер `alarms` поддерживает `autoDiscardable`: при каждом изменении `AggregatedState` и при старте выполняет `chrome.tabs.update(tabId, { autoDiscardable: false })` для известных вкладок, удаляя ID при `tab-removed`.
 * Таймер `chrome.alarms` (`codex-poll`, 1 минута) вызывает `aggregator.evaluateHeartbeatStatuses()`, помечает вкладки как `STALE` и отправляет `PING` через `chrome.tabs.sendMessage` только тем tabId, которые давно не отправляли heartbeat.
@@ -575,27 +576,75 @@ const DEFAULT_STATE = {
   debounce: { ms: 12000, since: 0 }
 };
 
-const MVP_SETTINGS = {
+const DEFAULT_SETTINGS = {
   debounceMs: 12000,
-  autoDiscardableOff: true
+  autoDiscardableOff: true,
+  sound: false,
+  soundVolume: 0.5,
+  showBadgeCount: true
 };
 
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 15000;
 
-// v0.2.0+: расширяем настройки синхронизации (звук, бейдж)
-const DEFAULT_SETTINGS = {
-  ...MVP_SETTINGS,
-  sound: false,
-  showBadgeCount: true
-};
+let state = { ...DEFAULT_STATE };
+let settings = { ...DEFAULT_SETTINGS };
 
-// В MVP настройки читаются из констант
-let settings = { ...MVP_SETTINGS };
+async function ensureStateSnapshot() {
+  try {
+    const { state: stored } = await chrome.storage.session.get(['state']);
+    if (stored) {
+      state = {
+        ...DEFAULT_STATE,
+        ...stored,
+        tabs: { ...DEFAULT_STATE.tabs, ...stored.tabs },
+        debounce: { ...DEFAULT_STATE.debounce, ...stored.debounce }
+      };
+      state.lastTotal = Object.values(state.tabs).reduce((acc, tab) => acc + (tab.count || 0), 0);
+      return;
+    }
+  } catch (error) {
+    console.warn('failed to read session state', error);
+  }
+  state = { ...DEFAULT_STATE };
+  await chrome.storage.session.set({ state });
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(Number(value) || 0, min), max);
+}
+
+function applySettingsPatch(patch = {}) {
+  settings = {
+    ...settings,
+    ...patch,
+  };
+  settings.debounceMs = clamp(settings.debounceMs ?? DEFAULT_SETTINGS.debounceMs, 0, 60_000);
+  settings.autoDiscardableOff = Boolean(settings.autoDiscardableOff);
+  settings.sound = Boolean(settings.sound);
+  settings.soundVolume = clamp(settings.soundVolume ?? DEFAULT_SETTINGS.soundVolume, 0, 1);
+  settings.showBadgeCount = Boolean(settings.showBadgeCount);
+}
+
+async function refreshSettings() {
+  try {
+    const stored = await chrome.storage.sync.get([
+      'debounceMs',
+      'autoDiscardableOff',
+      'sound',
+      'soundVolume',
+      'showBadgeCount',
+    ]);
+    applySettingsPatch(stored);
+  } catch (error) {
+    console.warn('failed to load sync settings', error);
+    settings = { ...DEFAULT_SETTINGS };
+  }
+  applyAutoDiscardableToAllCodexTabs();
+}
 
 function applyAutoDiscardable(tabId) {
   if (typeof tabId !== 'number') return;
-  const autoDiscardable = settings.autoDiscardableOff ? false : true;
-  chrome.tabs.update(tabId, { autoDiscardable });
+  chrome.tabs.update(tabId, { autoDiscardable: settings.autoDiscardableOff ? false : true });
 }
 
 function applyAutoDiscardableToAllCodexTabs() {
@@ -604,125 +653,129 @@ function applyAutoDiscardableToAllCodexTabs() {
   });
 }
 
-function refreshSettings() {
-  // v0.2.0+: загрузка пользовательских настроек из chrome.storage.sync
-  return chrome.storage.sync.get(['settings']).then(({ settings: stored }) => {
-    settings = { ...DEFAULT_SETTINGS, ...stored };
-    applyAutoDiscardableToAllCodexTabs();
-  });
-}
+(async function bootstrap() {
+  await ensureStateSnapshot();
+  await refreshSettings();
+})();
 
-// v0.2.0+: активируем синхронизацию настроек
-// refreshSettings();
-
-// v0.2.0+: отслеживаем изменения настроек из popup/опций
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area !== 'sync' || !changes.settings) return;
-  const next = changes.settings.newValue;
-  settings = { ...DEFAULT_SETTINGS, ...next };
-  applyAutoDiscardableToAllCodexTabs();
+  if (area !== 'sync') return;
+  const patch = {};
+  if (typeof changes.debounceMs?.newValue === 'number') {
+    patch.debounceMs = changes.debounceMs.newValue;
+  }
+  if (typeof changes.autoDiscardableOff?.newValue === 'boolean') {
+    patch.autoDiscardableOff = changes.autoDiscardableOff.newValue;
+  }
+  if (typeof changes.sound?.newValue === 'boolean') {
+    patch.sound = changes.sound.newValue;
+  }
+  if (typeof changes.soundVolume?.newValue === 'number') {
+    patch.soundVolume = changes.soundVolume.newValue;
+  }
+  if (typeof changes.showBadgeCount?.newValue === 'boolean') {
+    patch.showBadgeCount = changes.showBadgeCount.newValue;
+  }
+  if (Object.keys(patch).length === 0) {
+    return;
+  }
+  applySettingsPatch(patch);
+  if ('autoDiscardableOff' in patch) {
+    applyAutoDiscardableToAllCodexTabs();
+  }
 });
 
-chrome.runtime.onMessage.addListener((msg, sender) => {
+chrome.runtime.onMessage.addListener(async (msg, sender) => {
   if (msg.type !== 'TASKS_UPDATE') return;
   const tabId = sender.tab?.id;
+  if (typeof tabId !== 'number') return;
+
+  await ensureStateSnapshot();
   applyAutoDiscardable(tabId);
-  chrome.storage.session.get(['state']).then(({ state }) => {
-    const prevTabs = { ...DEFAULT_STATE.tabs, ...state?.tabs };
-    const nextState = {
-      ...DEFAULT_STATE,
-      ...state,
-      tabs: prevTabs,
-      debounce: { ...DEFAULT_STATE.debounce, ...state?.debounce }
-    };
-    nextState.debounce.ms = settings.debounceMs;
-    const guaranteedCount = msg.count; // по схеме 5.1 поле обязательно
-    const inferredActive = guaranteedCount > 0 ? true : msg.active;
-    const title = sender.tab?.title?.trim();
-    const now = Date.now();
-    const snapshotTs = msg.ts;
-    const prevTab = prevTabs[tabId];
-    const heartbeat = prevTab?.heartbeat
-      ? { ...prevTab.heartbeat }
-      : {
-          lastReceivedAt: snapshotTs,
-          expectedIntervalMs: DEFAULT_HEARTBEAT_INTERVAL_MS,
-          status: 'OK',
-          missedCount: 0
-        };
-    const lastSeenAt = Math.max(
-      snapshotTs,
-      prevTab?.lastSeenAt ?? 0,
-      heartbeat.lastReceivedAt ?? 0
-    );
-    nextState.tabs = { ...prevTabs, [tabId]: {
-      origin: msg.origin,
-      title: title || msg.origin,
-      active: inferredActive,
-      count: guaranteedCount,
-      updatedAt: now,
-      lastSeenAt,
-      heartbeat,
-      signals: (msg.signals || []).map(({ detector, evidence, taskKey }) => ({
-        detector,
-        evidence,
-        ...(taskKey ? { taskKey } : {})
-      }))
-    } };
-    const prevTotal = nextState.lastTotal;
-    const total = Object.values(nextState.tabs).reduce((acc,t) => acc + (t.count || 0), 0);
-    nextState.lastTotal = total;
 
-    if (prevTotal > 0 && total === 0) {
-      nextState.debounce.since = Date.now();
-      const waitMs = nextState.debounce.ms;
-      setTimeout(async () => {
-        const stored = await chrome.storage.session.get(['state']);
-        const currentState = { ...DEFAULT_STATE, ...stored.state, debounce: { ...DEFAULT_STATE.debounce, ...stored.state?.debounce } };
-        currentState.debounce.ms = settings.debounceMs;
-        const stillZero = currentState.lastTotal === 0 && Object.values(currentState.tabs).every(t => (t.count || 0) === 0);
-        const debounceElapsed = currentState.debounce.since > 0 && (Date.now() - currentState.debounce.since) >= currentState.debounce.ms;
-        if (stillZero && debounceElapsed) {
-          chrome.notifications.create({
-            type: 'basic',
-            iconUrl: 'assets/icon128.png',
-            title: 'Codex',
-            message: 'Все задачи в Codex завершены',
-            buttons: [{ title: 'ОК' }]
-          });
-          // v0.2.0+: при включенном settings.sound запустить воспроизведение через offscreen document
-          currentState.debounce.since = 0; // очистка после уведомления
-          await chrome.storage.session.set({ state: currentState });
-        }
-      }, waitMs);
-    }
+  const prevTabs = state.tabs;
+  const nextState = {
+    ...state,
+    tabs: { ...prevTabs },
+    debounce: { ...state.debounce, ms: settings.debounceMs }
+  };
 
-    chrome.storage.session.set({ state: nextState });
-  });
+  const guaranteedCount = msg.count;
+  const inferredActive = guaranteedCount > 0 ? true : msg.active;
+  const now = Date.now();
+  const snapshotTs = msg.ts;
+  const prevTab = prevTabs[tabId];
+  const heartbeat = prevTab?.heartbeat
+    ? { ...prevTab.heartbeat }
+    : {
+        lastReceivedAt: snapshotTs,
+        expectedIntervalMs: DEFAULT_HEARTBEAT_INTERVAL_MS,
+        status: 'OK',
+        missedCount: 0,
+      };
+  const lastSeenAt = Math.max(snapshotTs, prevTab?.lastSeenAt ?? 0, heartbeat.lastReceivedAt ?? 0);
+
+  nextState.tabs[tabId] = {
+    origin: msg.origin,
+    title: sender.tab?.title?.trim() || msg.origin,
+    active: inferredActive,
+    count: guaranteedCount,
+    updatedAt: now,
+    lastSeenAt,
+    heartbeat,
+    signals: (msg.signals || []).map(({ detector, evidence, taskKey }) => ({
+      detector,
+      evidence,
+      ...(taskKey ? { taskKey } : {}),
+    })),
+  };
+
+  const previousTotal = state.lastTotal;
+  const total = Object.values(nextState.tabs).reduce((acc, tab) => acc + (tab.count || 0), 0);
+  nextState.lastTotal = total;
+
+  if (previousTotal > 0 && total === 0) {
+    nextState.debounce.since = Date.now();
+    setTimeout(async () => {
+      await ensureStateSnapshot();
+      const stillZero = state.lastTotal === 0 && Object.values(state.tabs).every((t) => (t.count || 0) === 0);
+      const debounceElapsed =
+        state.debounce.since > 0 && Date.now() - state.debounce.since >= state.debounce.ms;
+      if (stillZero && debounceElapsed) {
+        chrome.notifications.create({
+          type: 'basic',
+          iconUrl: 'assets/icon128.png',
+          title: 'Codex',
+          message: 'Все задачи в Codex завершены',
+          buttons: [{ title: 'ОК' }],
+        });
+        // при включенном settings.sound → offscreen document воспроизводит звук
+        state.debounce.since = 0;
+        await chrome.storage.session.set({ state });
+      }
+    }, nextState.debounce.ms);
+  }
+
+  state = nextState;
+  await chrome.storage.session.set({ state: nextState });
+  return true;
 });
 
 chrome.tabs.onRemoved.addListener(async (tabId) => {
-  const { state } = await chrome.storage.session.get(['state']);
-  const nextState = {
-    ...DEFAULT_STATE,
-    ...state,
-    tabs: { ...DEFAULT_STATE.tabs, ...state?.tabs },
-    debounce: { ...DEFAULT_STATE.debounce, ...state?.debounce }
-  };
-  nextState.debounce.ms = settings.debounceMs;
-  delete nextState.tabs[tabId];
-  nextState.lastTotal = Object.values(nextState.tabs).reduce((acc, tab) => acc + (tab.count || 0), 0);
-  if (nextState.lastTotal === 0) {
-    nextState.debounce.since = 0;
+  await ensureStateSnapshot();
+  delete state.tabs[tabId];
+  state.lastTotal = Object.values(state.tabs).reduce((acc, tab) => acc + (tab.count || 0), 0);
+  if (state.lastTotal === 0) {
+    state.debounce.since = 0;
   }
-  await chrome.storage.session.set({ state: nextState });
+  await chrome.storage.session.set({ state });
 });
 
 chrome.alarms.create('codex-poll', { periodInMinutes: 1 });
-chrome.alarms.onAlarm.addListener(alarm => {
+chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name !== 'codex-poll') return;
-  chrome.tabs.query({ url: ['*://*.openai.com/*', '*://*.chatgpt.com/*'] }, tabs => {
-    tabs.forEach(t => chrome.tabs.sendMessage(t.id, { type: 'PING' }));
+  chrome.tabs.query({ url: ['*://*.openai.com/*', '*://*.chatgpt.com/*'] }, (tabs) => {
+    tabs.forEach((tab) => chrome.tabs.sendMessage(tab.id, { type: 'PING' }));
   });
 });
 ```
