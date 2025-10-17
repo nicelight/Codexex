@@ -125,6 +125,17 @@ function withSpy<T extends (...args: any[]) => unknown>(impl: T): T {
   return viLike ? (viLike.fn(impl) as unknown as T) : impl;
 }
 
+function extractCallback<Callback extends (...args: any[]) => unknown>(
+  args: unknown[],
+): Callback | undefined {
+  for (let index = args.length - 1; index >= 0; index -= 1) {
+    if (typeof args[index] === 'function') {
+      return args[index] as Callback;
+    }
+  }
+  return undefined;
+}
+
 export function getChrome(): ChromeLike {
   if (typeof globalThis.chrome === 'undefined') {
     throw new Error('Chrome APIs are not available in this environment');
@@ -166,16 +177,11 @@ function createPortMock(): chrome.runtime.Port {
 
 function createCallbackInvoker(): typeof chrome.runtime.sendMessage {
   const handler = ((...args: unknown[]) => {
-    let callback: ((response?: unknown) => void) | undefined;
-    for (let index = args.length - 1; index >= 0; index -= 1) {
-      if (typeof args[index] === 'function') {
-        callback = args[index] as (response?: unknown) => void;
-        break;
-      }
-    }
+    const callback = extractCallback<(response?: unknown) => void>(args);
     if (callback) {
       callback();
     }
+    return undefined as unknown;
   }) as typeof chrome.runtime.sendMessage;
   return handler;
 }
@@ -231,42 +237,66 @@ function createInMemoryStorageArea(
       }
       return Promise.resolve(result);
     }) as Pick<typeof chrome.storage.session, 'get'>['get'],
-    async set(items: Record<string, unknown>) {
-      const changes: Record<string, chrome.storage.StorageChange> = {};
-      for (const [key, value] of Object.entries(items)) {
-        const oldValue = store.has(key) ? store.get(key) : undefined;
-        store.set(key, value);
-        changes[key] = { oldValue, newValue: value };
-      }
-      if (Object.keys(changes).length > 0) {
-        onChanged.emit(changes, areaName);
-      }
-    },
-    async remove(keys: string | string[]) {
-      const list = Array.isArray(keys) ? keys : [keys];
-      const changes: Record<string, chrome.storage.StorageChange> = {};
-      for (const key of list) {
-        if (store.has(key)) {
-          const oldValue = store.get(key);
-          store.delete(key);
-          changes[key] = { oldValue, newValue: undefined };
+    set: ((items: Record<string, unknown>, callback?: () => void) => {
+      const operation = async () => {
+        const changes: Record<string, chrome.storage.StorageChange> = {};
+        for (const [key, value] of Object.entries(items)) {
+          const oldValue = store.has(key) ? store.get(key) : undefined;
+          store.set(key, value);
+          changes[key] = { oldValue, newValue: value };
         }
-      }
-      if (Object.keys(changes).length > 0) {
-        onChanged.emit(changes, areaName);
-      }
-    },
-    async clear() {
-      if (store.size === 0) {
+        if (Object.keys(changes).length > 0) {
+          onChanged.emit(changes, areaName);
+        }
+      };
+      const result = operation();
+      if (callback) {
+        void result.then(() => callback(), () => callback());
         return;
       }
-      const changes: Record<string, chrome.storage.StorageChange> = {};
-      for (const [key, value] of Array.from(store.entries())) {
-        changes[key] = { oldValue: value, newValue: undefined };
+      return result;
+    }) as Pick<typeof chrome.storage.session, 'set'>['set'],
+    remove: ((keys: string | string[], callback?: () => void) => {
+      const operation = async () => {
+        const list = Array.isArray(keys) ? keys : [keys];
+        const changes: Record<string, chrome.storage.StorageChange> = {};
+        for (const key of list) {
+          if (store.has(key)) {
+            const oldValue = store.get(key);
+            store.delete(key);
+            changes[key] = { oldValue, newValue: undefined };
+          }
+        }
+        if (Object.keys(changes).length > 0) {
+          onChanged.emit(changes, areaName);
+        }
+      };
+      const result = operation();
+      if (callback) {
+        void result.then(() => callback(), () => callback());
+        return;
       }
-      store.clear();
-      onChanged.emit(changes, areaName);
-    },
+      return result;
+    }) as Pick<typeof chrome.storage.session, 'remove'>['remove'],
+    clear: ((callback?: () => void) => {
+      const operation = async () => {
+        if (store.size === 0) {
+          return;
+        }
+        const changes: Record<string, chrome.storage.StorageChange> = {};
+        for (const [key, value] of Array.from(store.entries())) {
+          changes[key] = { oldValue: value, newValue: undefined };
+        }
+        store.clear();
+        onChanged.emit(changes, areaName);
+      };
+      const result = operation();
+      if (callback) {
+        void result.then(() => callback(), () => callback());
+        return;
+      }
+      return result;
+    }) as Pick<typeof chrome.storage.session, 'clear'>['clear'],
   };
 }
 
@@ -346,13 +376,7 @@ export function createMockChrome(overrides?: Partial<ChromeLike>): ChromeMock {
     tabs: {
       query: withSpy((async () => []) as typeof chrome.tabs.query),
       sendMessage: withSpy((async (...args: Parameters<typeof chrome.tabs.sendMessage>) => {
-        let callback: ((response?: unknown) => void) | undefined;
-        for (let index = args.length - 1; index >= 0; index -= 1) {
-          if (typeof args[index] === 'function') {
-            callback = args[index] as (response?: unknown) => void;
-            break;
-          }
-        }
+        const callback = extractCallback<(response?: unknown) => void>(args);
         if (callback) {
           callback();
         }
@@ -423,8 +447,29 @@ export function createMockChrome(overrides?: Partial<ChromeLike>): ChromeMock {
         }
         return Promise.resolve(resolvedId);
       }) as typeof chrome.notifications.create),
-      clear: withSpy((async () => true) as typeof chrome.notifications.clear),
-      update: withSpy((async () => true) as typeof chrome.notifications.update),
+      clear: withSpy(((
+        _notificationId: string,
+        callback?: (wasCleared: boolean) => void,
+      ) => {
+        const promise = Promise.resolve(true);
+        if (callback) {
+          void promise.then((result) => callback(result), () => callback(false));
+          return;
+        }
+        return promise;
+      }) as typeof chrome.notifications.clear),
+      update: withSpy(((
+        _notificationId: string,
+        _options: chrome.notifications.NotificationOptions,
+        callback?: (wasUpdated: boolean) => void,
+      ) => {
+        const promise = Promise.resolve(true);
+        if (callback) {
+          void promise.then((result) => callback(result), () => callback(false));
+          return;
+        }
+        return promise;
+      }) as typeof chrome.notifications.update),
     },
     action: {
       setBadgeBackgroundColor: withSpy((async () => undefined) as typeof chrome.action.setBadgeBackgroundColor),
