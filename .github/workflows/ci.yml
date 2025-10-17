@@ -1,0 +1,44 @@
+name: Codex CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: codex-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-checks:
+    name: Lint & Tests
+    runs-on: ubuntu-latest
+    env:
+      CI: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint sources
+        run: npm run lint
+
+      - name: TypeScript compile check
+        run: npx tsc --noEmit
+
+      - name: Run unit tests
+        run: npm run test:unit
+
+      - name: Run contract tests
+        run: npm run test:contract
