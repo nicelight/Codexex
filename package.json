@@ -5,10 +5,8 @@
   "type": "module",
   "scripts": {
     "extension:icons": "node scripts/generate-extension-icons.mjs",
-    "predev": "npm run extension:icons",
-    "dev": "vite build --watch",
-    "prebuild": "npm run extension:icons",
-    "build": "vite build",
+    "dev": "npm run extension:icons && vite build --watch",
+    "build": "npm run extension:icons && vite build",
     "postinstall": "npm run extension:icons",
     "lint": "eslint \"extension/src/**/*.{ts,tsx}\" --max-warnings=0",
     "contracts:generate": "node scripts/generate-contracts.mjs",
