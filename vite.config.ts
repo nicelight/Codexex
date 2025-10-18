@@ -6,6 +6,7 @@ import type { OutputAsset, OutputBundle } from 'rollup';
 const projectRoot = __dirname;
 const extensionRoot = path.resolve(projectRoot, 'extension');
 const manifestPath = path.resolve(extensionRoot, 'manifest.json');
+const iconsSpecPath = path.resolve(projectRoot, 'scripts', 'extension-icons.json');
 const outDir = path.resolve(projectRoot, 'dist');
 
 const backgroundEntry = path.resolve(extensionRoot, 'src/background/index.ts');
@@ -21,6 +22,38 @@ const POPUP_HTML_OUTPUT = 'src/popup.html';
 const CONTENT_ASSET_GLOB = 'assets/*';
 const MEDIA_ASSET_PATH = path.resolve(projectRoot, 'media', 'oh-oh-icq-sound.mp3');
 const MEDIA_ASSET_OUTPUT = 'media/oh-oh-icq-sound.mp3';
+const ICONS_OUTPUT_DIR = 'icons';
+
+interface IconSpec {
+  name: string;
+  size: number;
+  base64: string;
+}
+
+let cachedIconSpecs: IconSpec[] | null = null;
+
+async function loadIconSpecs(): Promise<IconSpec[]> {
+  if (cachedIconSpecs) {
+    return cachedIconSpecs;
+  }
+
+  const source = await readFile(iconsSpecPath, 'utf-8');
+  const specs = JSON.parse(source) as IconSpec[];
+
+  cachedIconSpecs = specs;
+  return cachedIconSpecs;
+}
+
+function ensureManifestIcons(manifest: Record<string, unknown>): Record<string, string> {
+  const current = manifest.icons;
+  if (current && typeof current === 'object') {
+    return current as Record<string, string>;
+  }
+
+  const icons: Record<string, string> = {};
+  manifest.icons = icons;
+  return icons;
+}
 
 function findChunkFileName(bundle: OutputBundle, entryPath: string): string {
   const normalizedEntry = path.normalize(entryPath);
@@ -63,10 +96,12 @@ function manifestCopyPlugin(): PluginOption {
     enforce: 'post',
     buildStart() {
       this.addWatchFile(manifestPath);
+      this.addWatchFile(iconsSpecPath);
     },
     async generateBundle(_, bundle) {
       const manifestSource = await readFile(manifestPath, 'utf-8');
       const manifest = JSON.parse(manifestSource);
+      const iconSpecs = await loadIconSpecs();
 
       const backgroundFileName = findChunkFileName(bundle, backgroundEntry);
       const contentFileName = findChunkFileName(bundle, contentEntry);
@@ -152,6 +187,19 @@ function manifestCopyPlugin(): PluginOption {
       }
 
       ensureContentResources();
+
+      const manifestIcons = ensureManifestIcons(manifest);
+
+      for (const { name, base64, size } of iconSpecs) {
+        const fileName = path.posix.join(ICONS_OUTPUT_DIR, name);
+        manifestIcons[String(size)] = fileName;
+
+        this.emitFile({
+          type: 'asset',
+          fileName,
+          source: Buffer.from(base64, 'base64'),
+        });
+      }
 
       const updatedManifest = `${JSON.stringify(manifest, null, 2)}\n`;
 
