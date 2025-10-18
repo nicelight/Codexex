@@ -3,6 +3,12 @@
   "name": "Codex Tasks Watcher",
   "description": "Observes Codex tabs and prepares notifications when tasks complete.",
   "version": "0.1.1",
+  "icons": {
+    "16": "icons/codex-icon-16.png",
+    "32": "icons/codex-icon-32.png",
+    "48": "icons/codex-icon-48.png",
+    "128": "icons/codex-icon-128.png"
+  },
   "permissions": [
     "notifications",
     "alarms",
