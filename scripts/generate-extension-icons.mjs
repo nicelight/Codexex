@@ -1,53 +1,61 @@
-import { mkdir, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const iconsDir = join(__dirname, '..', 'extension', 'icons');
+const projectRoot = resolve(__dirname, '..');
+const defaultIconsDir = join(projectRoot, 'extension', 'icons');
+const iconsSpecPath = join(__dirname, 'extension-icons.json');
 
-const icons = [
-  {
-    name: 'codex-icon-16.png',
-    size: 16,
-    base64:
-      'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAZElEQVR4nGNgGGjAiEsi4sj//8j8FTaMWNViCKJrRAfoBqFwkDWjK8Qlx4TLJmK9ADcApgFZIS5DkMWxugCfIThdQK4hRIUBNqfDAM6QJsYVK2wYGYnyAj556iYkfAYRctHAAQDayEATjWdbdwAAAABJRU5ErkJggg=='
-  },
-  {
-    name: 'codex-icon-32.png',
-    size: 32,
-    base64:
-      'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAA60lEQVR4nOWX0Q2DMAxEoepYDMKIHYS90i+kEOzLne1KlfAniX1Ph+PAsjw9VjVhP1pD659tlWrSm2fCUZDpJlVYBYGLnrhXVN0PAcZi6rtl81+/ELdyPHduABXiCoTpgFJAhYAAvYAnnoUY86EDXlL2aJoAqKhlYwaizzUdsASzENIxREUqGjMM0INUQYQAKiHCAFUD650V9sRZR6i7wHtuNaUifgFAFu5Ha6zljHifS/XAKJa5oMa4AKCZfa7NxNV16EC00xWHbgBV55sd59RdEIFg3fvfj9JZUTZSn+UZkLIfExWkckY8I7776bSwLS1PrwAAAABJRU5ErkJggg=='
-  },
-  {
-    name: 'codex-icon-48.png',
-    size: 48,
-    base64:
-      'iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAABaklEQVR4nO1Z2xHCMAxzOcZiEEZkEPYqX7krYMcv2b1C9UsiWbHjhoToxIkUFjTh/bmus98ftwWqmSbTAtaQNRSenA38E1Ejl8gkdPAZTpfrisA5eLJhHmgNXhNH8QyYBlV1FgSvOmAmgmqJGY3pJu4IXuPSshTqQuiPUYZTNCA5/xRCdibJxEyDNeANfk8T5hJCtUeE1hZfBqyBcOOqP3QcvykD3IpE6tUDaxZCXUgT6TpyECUNEM1NdBhRW6JnQ1m7lwdaTOkMSMRaEChADRD1m4AbIOo1UWKAqM9EmYGKDc3hiiQj6juCD0ANRFY9W1JvJcQJZc5GEqeXe8YH2QN7rPxAqoS6652DKQPeo3NX8ESMAau4dMSuDJ7jNu8B9N0QyihrwPoVHeOiwXjmSWND/3OryiSid/jb6amBjj6ucWnZ/v3LXauYVXSX63WveBYlDxxbVBmJlOLhb6f/95lVQvdD94kTSbwAqNcGJ4zz518AAAAASUVORK5CYII='
-  },
-  {
-    name: 'codex-icon-128.png',
-    size: 128,
-    base64:
-      'iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAEiElEQVR4nO2dW3bbMAxE4Z4uKwvpErOQ7Cv96NExy0QxH3gMwLn/sYiZEQjJiixCCCGEEEIIIYSQU3hEL8CDPx+fnyt/9/72KK9PqQJXjZ6lUjDSF+Jl+h3Zw5By8dGm35ExDGkWjGr6HVnCAL/IbMb3oAcBdnHZje9BDQLcoqoZ34MWBJjFVDe+ByUIv6IXIHKe+SI4NYcHAEWICBBqD2tDCMUjEbUlhHQAmv+VKE3cA0Dz74nQxrXtRJo/22IzrXUHtwN5CmolYIUaelwO4iGc9xBVpSbzA1gKhXIzJXONph9uJQyK8T0Z6zX7YAsxUI3vyVR7imEpi/EGXRQvw+QoWgvtNdu0VlUA0Dzv4Iegt+aH6ZFBeNbrnoQ74KqdQCt4qqZ36JVm2aQVAJA88dBC8F2AGj+PEghCH8gROQs8y9Qat4KgEYCUYSIQKP2XQ9CO8CKAIiT9A7RJ8ByACKMuI5ZLQS77OgR1gF2H9CoFILILrAUgF3xtZ7OYQierGrh3gEsbo1WCUJEJ5gOgLfYo8erEoIdVjRw7QDWD2ZWCIF3F4C4EfQdq2ZWCIEnUwHYEXc22TtnQvYQeNYO2wFEzg6BFy4B2DHy/e3xWP37zCHwmgWGAxAt5k4IotfuzUy90FtAD7cEfcwDoN3KTgqBxzYwFAA04U4KwSqjdabaAlpOHQ61MQ2ARwurHgJrDdN2gBZeIaxTIgAinAtWKRMAEYZghZcByCYMh8MnI/WYdYDohx0rhcBSy1JbQE+lEFhROgAiDMErygdAhJeJP3FEAEQ4HN5xTAAuGIL/OS4AIgxBy5EB4A9JPoF8RYwVng+1ZuGYAPCs/54jtgCaf0/5AND8nzELQPTEvHMTB818Sy1fBgBNjBE47P1jpJZyQ2CVs96LUgFAMj/L6/NKBACp5Wvv19azlOlVgMcgiGJ+1m8OU18GIpmv9VneDAUAcUDa2e8R69FmtEbzDmCxJ1Yc9qJItQWgtPxKDAcgWkBE81HP/pl6XTrArlCI5lcB+j6A9xtJT2SqA3j+69XuWX+q+bN1ww6BqwaeavwqrgGYPas93y24QoWwTQcAVeQKZuyyooH7FpDpd3XRj63BUgC8321/d7yTh72eVR3ChsDdECAZj7SWWZYDEFH0dUxEwSO70c5xQy8DV+YBRPNbsm1L4b9bJ4JvqhUI2kHcCEL9UsUSlJq3A4D0O7hZQHpgVKUDMATjIJkvorgFMASvQTNfBPTr4EuoKsMhcqhVh0D0Z+wj0K5BW2P1qwCG4Am6+SIK9wHuqPalzwyZajcV1OrsRQ1CxnrNhbRs4ShByFyji4Ae+7h3GKrU5Caa5zBX4f8AvAJd7qy5w/qXyzXx7Gbue2jmyzoPyv98PMrghkiENiFfBzMEX4nSJNyI07eE6JMh/IGQaAEiQag9PAAiGEJ4g1IzxCJaqm8JKMZfQC2mpVoQ0Iy/gFxUS/YgoBp/Ab24lmxBQDf+IsUie1DDkMX0lnQL7okOQ0bTW1IvvscrDNlNbylTyE8gvViSEEIIIYQQQgghJIq/lqrF6Ws82XUAAAAASUVORK5CYII='
-  }
-];
+const decodeBase64 = (value) => Buffer.from(value, 'base64');
 
-const decoder = (str) => Buffer.from(str, 'base64');
-
-const ensureIconsDir = async () => {
-  await mkdir(iconsDir, { recursive: true });
+const normalizeTargetDir = (dir) => {
+  return isAbsolute(dir) ? dir : resolve(projectRoot, dir);
 };
 
-const writeIcons = async () => {
-  await ensureIconsDir();
+const loadIconSpecs = async () => {
+  const source = await readFile(iconsSpecPath, 'utf-8');
+  const entries = JSON.parse(source);
+
+  if (!Array.isArray(entries)) {
+    throw new Error('Icon specification must be an array');
+  }
+
+  return entries.map((entry) => {
+    const { name, base64, size } = entry ?? {};
+    if (typeof name !== 'string' || name.length === 0) {
+      throw new Error('Icon specification is missing required "name" field');
+    }
+    if (typeof base64 !== 'string' || base64.length === 0) {
+      throw new Error(`Icon "${name}" is missing its base64 payload`);
+    }
+    if (typeof size !== 'number') {
+      throw new Error(`Icon "${name}" is missing its numeric "size" field`);
+    }
+
+    return { name, base64, size };
+  });
+};
+
+const writeIconsToDir = async (icons, targetDir) => {
+  await mkdir(targetDir, { recursive: true });
+
   await Promise.all(
-    icons.map(async ({ name, base64, size }) => {
-      const filePath = join(iconsDir, name);
-      const buffer = decoder(base64);
-      await writeFile(filePath, buffer);
-      return { filePath, size };
+    icons.map(async ({ name, base64 }) => {
+      const filePath = join(targetDir, name);
+      await writeFile(filePath, decodeBase64(base64));
     })
   );
 };
 
-await writeIcons();
+const main = async () => {
+  const iconSpecs = await loadIconSpecs();
+  const cliTargets = process.argv.slice(2).filter(Boolean);
+  const targetDirs = [defaultIconsDir, ...cliTargets.map(normalizeTargetDir)];
+
+  for (const targetDir of new Set(targetDirs)) {
+    await writeIconsToDir(iconSpecs, targetDir);
+  }
+};
+
+await main();
