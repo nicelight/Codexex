@@ -2,5 +2,6 @@ node_modules/
 dist/
 extension/node_modules/
 extension/dist/
+extension/icons/*.png
 *.log
 .DS_Store
