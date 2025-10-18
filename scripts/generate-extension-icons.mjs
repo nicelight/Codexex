@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -52,10 +52,30 @@ const main = async () => {
   const iconSpecs = await loadIconSpecs();
   const cliTargets = process.argv.slice(2).filter(Boolean);
   const targetDirs = [defaultIconsDir, ...cliTargets.map(normalizeTargetDir)];
+  const uniqueTargetDirs = Array.from(new Set(targetDirs));
+  const formattedDir = (dir) => {
+    if (dir === projectRoot) {
+      return '.';
+    }
+    if (dir.startsWith(`${projectRoot}${sep}`)) {
+      return relative(projectRoot, dir);
+    }
+    return dir;
+  };
 
-  for (const targetDir of new Set(targetDirs)) {
+  for (const targetDir of uniqueTargetDirs) {
     await writeIconsToDir(iconSpecs, targetDir);
+    console.log(
+      `[extension:icons] wrote ${iconSpecs.length} PNG ${iconSpecs.length === 1 ? 'asset' : 'assets'} to ${formattedDir(
+        targetDir,
+      )}`,
+    );
   }
 };
 
-await main();
+try {
+  await main();
+} catch (error) {
+  console.error('[extension:icons] failed to generate icons:', error);
+  process.exitCode = 1;
+}
