@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite build --watch",
-    "build": "vite build",
+    "extension:icons": "node scripts/generate-extension-icons.mjs",
+    "dev": "npm run extension:icons && vite build --watch",
+    "build": "npm run extension:icons && vite build",
     "lint": "eslint \"extension/src/**/*.{ts,tsx}\" --max-warnings=0",
     "contracts:generate": "node scripts/generate-contracts.mjs",
     "test:unit": "vitest run --config vitest.unit.config.ts",
