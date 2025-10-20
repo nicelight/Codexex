@@ -109,6 +109,28 @@ describe('ActivityScanner', () => {
     expect(stopSignals[0]?.taskKey).toBe('real-task');
   });
 
+  it('detects stop signals within listing group containers when task ids are present', () => {
+    document.body.innerHTML = `
+      <div id="lg#2">
+        <div class="task" data-task-id="nested-task">
+          <button class="btn">Stop</button>
+        </div>
+      </div>
+      <div class="task" data-task-id="outer-task">
+        <button class="btn">Cancel</button>
+      </div>
+    `;
+
+    const snapshot = createScanner().scan(Date.now());
+
+    const stopSignals = snapshot.signals.filter((signal) => signal.detector === 'D2_STOP_BUTTON');
+    expect(stopSignals).toHaveLength(2);
+    expect(stopSignals.map((signal) => signal.taskKey).sort()).toEqual([
+      'nested-task',
+      'outer-task',
+    ]);
+  });
+
   it('ignores hidden and disabled stop controls', () => {
     document.body.innerHTML = `
       <div class="task" data-task-id="hidden" hidden>
