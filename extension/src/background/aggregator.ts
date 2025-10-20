@@ -24,7 +24,7 @@ type AggregatedHeartbeatState = AggregatedTabsStateHeartbeatState;
 type AggregatedDebounceState = AggregatedTabsStateDebounceState;
 
 const FALLBACK_DEBOUNCE_MS = SETTINGS_DEFAULTS.debounceMs;
-const DEFAULT_HEARTBEAT_INTERVAL_MS = 15_000;
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 5_000;
 const HEARTBEAT_STALE_MULTIPLIER = 3;
 const STORAGE_KEY = getSessionStateKey();
 const MAX_WRITE_ATTEMPTS = 3;

@@ -247,7 +247,7 @@ describe('BackgroundAggregator', () => {
       origin: 'https://chatgpt.com/settings',
       ts: 2_000,
       lastUpdateTs: 2_000,
-      intervalMs: 15_000,
+      intervalMs: 5_000,
     };
 
     await aggregator.handleHeartbeat(nonCodexHeartbeat, sender);
@@ -336,7 +336,7 @@ describe('BackgroundAggregator', () => {
             lastSeenAt: 1_000,
             heartbeat: {
               lastReceivedAt: 1_000,
-              expectedIntervalMs: 15_000,
+              expectedIntervalMs: 5_000,
               status: 'OK',
               missedCount: 0,
             },
@@ -357,7 +357,7 @@ describe('BackgroundAggregator', () => {
             lastSeenAt: 2_000,
             heartbeat: {
               lastReceivedAt: 2_000,
-              expectedIntervalMs: 15_000,
+              expectedIntervalMs: 5_000,
               status: 'OK',
               missedCount: 0,
             },
@@ -407,7 +407,7 @@ describe('BackgroundAggregator', () => {
       origin: updateMessage.origin,
       ts: 1_000,
       lastUpdateTs: 500,
-      intervalMs: 15_000,
+      intervalMs: 5_000,
     };
 
     await aggregator.handleHeartbeat(heartbeat, sender);
@@ -617,7 +617,7 @@ describe('BackgroundAggregator', () => {
       origin: 'https://chatgpt.com/codex',
       ts: 1_000,
       lastUpdateTs: 800,
-      intervalMs: 15_000,
+      intervalMs: 5_000,
     };
 
     await expect(

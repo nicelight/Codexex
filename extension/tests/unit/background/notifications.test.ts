@@ -125,8 +125,8 @@ describe('background notifications', () => {
     await vi.advanceTimersByTimeAsync(12_000);
     expect(createSpy).toHaveBeenCalledTimes(1);
 
-    currentTime = 15_000;
-    await aggregator.handleTasksUpdate(makeUpdate(3, 15_000), sender);
+    currentTime = 14_200;
+    await aggregator.handleTasksUpdate(makeUpdate(3, 14_200), sender);
     await vi.runOnlyPendingTimersAsync();
 
     expect(clearSpy).toHaveBeenCalled();

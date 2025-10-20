@@ -64,7 +64,7 @@
     * D4: числовой счётчик активных задач (`div.absolute.inset-0.flex.items-center.justify-center`).
     * **D3 (v0.2.0+)**: эвристика карточек остаётся зарезервированной и будет добавлена только после отдельного согласования.
   * Для предотвращения ложных нулевых срабатываний использует локальный debounce 500 мс перед отправкой `count=0`.
-  * Поддерживает таймер heartbeat (каждые 15 секунд или при пробуждении после `PING`), отправляя сообщение `TASKS_HEARTBEAT` с отметкой времени последнего успешного сканирования, чтобы background понимал, что вкладка «живая», даже если активных задач нет.
+* Поддерживает таймер heartbeat (каждые 5 секунд или при пробуждении после `PING`), отправляя сообщение `TASKS_HEARTBEAT` с отметкой времени последнего успешного сканирования, чтобы background понимал, что вкладка «живая», даже если активных задач нет.
   * Шлёт сообщение в **background** с текущим состоянием вкладки и обрабатывает события `PING`/`RESET`/`REQUEST_STATE` от сервиса.
 
 * **background (service worker)**:
@@ -126,7 +126,7 @@
 
 > **Примечание:** идентификатор вкладки background получает из `sender.tab.id`, поэтому поле `tabId` в сообщении не требуется. Контент‑скрипт не вычисляет `tabId`, а разрешение `tabs` используется только на стороне background для пингов и очистки состояния вкладок (см. §§2/8/10). Значение `D4_TASK_COUNTER` соответствует числовому индикатору на странице задачи, а `D3_CARD_HEUR` остаётся зарезервированным для будущего релиза. Поле `taskKey` заполняется только детекторами, которые могут привязать сигнал к конкретной карточке задачи (D2, в будущем D3); для спиннеров и счётчика оно опускается.
 
-Отдельное сообщение `TASKS_HEARTBEAT` (см. `contracts/dto/content-heartbeat.schema.json`) содержит `{ origin, ts, lastUpdateTs, intervalMs, respondingToPing? }` и используется для актуализации `lastSeenAt` и статуса вкладки. Контент-скрипт отправляет heartbeat каждые ≤15 секунд и сразу после `PING`, чтобы background мог отличить «живую» вкладку от замороженной.
+Отдельное сообщение `TASKS_HEARTBEAT` (см. `contracts/dto/content-heartbeat.schema.json`) содержит `{ origin, ts, lastUpdateTs, intervalMs, respondingToPing? }` и используется для актуализации `lastSeenAt` и статуса вкладки. Контент-скрипт отправляет heartbeat каждые ≤5 секунд и сразу после `PING`, чтобы background мог отличить «живую» вкладку от замороженной.
 
 ### 5.2. Хранимое агрегированное состояние у background
 
@@ -176,8 +176,8 @@
 
 Background хранит `signals` в виде последнего снимка сообщений: каждый объект содержит `detector`, `evidence` и (если был передан) `taskKey`. Popup отображает список сигналов в полученном порядке; ответственное за дедупликацию поведение остаётся на детекторах и агрегаторе (проверка равенства сигналов по тройке `detector/evidence/taskKey`).
 
-Дополнительно каждая вкладка хранит `lastSeenAt` (максимум между `updatedAt` и временем последнего `TASKS_HEARTBEAT`) и объект `heartbeat { lastReceivedAt, expectedIntervalMs, status, missedCount }`. Если heartbeat не приходит более чем `expectedIntervalMs * 3` (≈45 секунд), background помечает вкладку как `STALE`, инициирует повторный `PING` и не учитывает устаревшие данные при расчёте уведомлений.
-При первом `TASKS_UPDATE` для вкладки background создаёт heartbeat с `expectedIntervalMs = 15000`, `status = OK`, `missedCount = 0`, устанавливая `lastSeenAt` и `heartbeat.lastReceivedAt` по переданному `ts`.
+Дополнительно каждая вкладка хранит `lastSeenAt` (максимум между `updatedAt` и временем последнего `TASKS_HEARTBEAT`) и объект `heartbeat { lastReceivedAt, expectedIntervalMs, status, missedCount }`. Если heartbeat не приходит более чем `expectedIntervalMs * 3` (≈15 секунд), background помечает вкладку как `STALE`, инициирует повторный `PING` и не учитывает устаревшие данные при расчёте уведомлений.
+При первом `TASKS_UPDATE` для вкладки background создаёт heartbeat с `expectedIntervalMs = 5000`, `status = OK`, `missedCount = 0`, устанавливая `lastSeenAt` и `heartbeat.lastReceivedAt` по переданному `ts`.
 
 ### 5.3. Настройки пользователя (UI → storage.sync)
 
@@ -584,7 +584,7 @@ const DEFAULT_SETTINGS = {
   showBadgeCount: true
 };
 
-const DEFAULT_HEARTBEAT_INTERVAL_MS = 15000;
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 5000;
 
 let state = { ...DEFAULT_STATE };
 let settings = { ...DEFAULT_SETTINGS };

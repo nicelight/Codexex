@@ -39,7 +39,7 @@ describe('background alarms', () => {
           lastSeenAt: 1_000,
           heartbeat: {
             lastReceivedAt: 1_000,
-            expectedIntervalMs: 15_000,
+            expectedIntervalMs: 5_000,
             status: 'OK',
             missedCount: 0,
           },
@@ -78,7 +78,7 @@ describe('background alarms', () => {
           lastSeenAt: 0,
           heartbeat: {
             lastReceivedAt: 0,
-            expectedIntervalMs: 15_000,
+            expectedIntervalMs: 5_000,
             status: 'STALE',
             missedCount: 1,
           },
@@ -113,7 +113,7 @@ describe('background alarms', () => {
           lastSeenAt: 0,
           heartbeat: {
             lastReceivedAt: 0,
-            expectedIntervalMs: 15_000,
+            expectedIntervalMs: 5_000,
             status: 'OK',
             missedCount: 0,
           },

@@ -82,7 +82,7 @@ describe('background message handler', () => {
       origin: 'https://chatgpt.com/codex',
       ts: 200,
       lastUpdateTs: 150,
-      intervalMs: 15_000,
+      intervalMs: 5_000,
     };
     const sender = { tab: { id: 2 } } as chrome.runtime.MessageSender;
 
@@ -113,7 +113,7 @@ describe('background message handler', () => {
           lastSeenAt: 1_000,
           heartbeat: {
             lastReceivedAt: 1_000,
-            expectedIntervalMs: 15_000,
+            expectedIntervalMs: 5_000,
             status: 'OK',
             missedCount: 0,
           },
