@@ -35,8 +35,8 @@ export async function postToBackground(
   logger: ChromeLogger,
 ): Promise<void> {
   const chrome = resolveChrome();
-  if (!chrome.runtime?.id) {
-    logger.warn('runtime unavailable, skipping message (runtime-id-missing)');
+  if (typeof chrome.runtime?.sendMessage !== 'function') {
+    logger.warn('runtime unavailable, skipping message (sendMessage-missing)');
     return;
   }
   logger.debug('post message', message);
