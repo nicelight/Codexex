@@ -141,6 +141,9 @@ function collectStopSignals(
 
     const evidenceIndex = signals.length;
     const taskKey = findTaskKey(element);
+    if (taskKey && shouldIgnoreTaskKey(taskKey)) {
+      return;
+    }
     signals.push({
       detector: 'D2_STOP_BUTTON',
       evidence: `${elementEvidence(element)}#${evidenceIndex}`,
@@ -282,6 +285,15 @@ function findTaskKey(element: Element): string | undefined {
   }
 
   return undefined;
+}
+
+function shouldIgnoreTaskKey(taskKey: string): boolean {
+  const normalized = taskKey.trim().toLowerCase();
+  if (!normalized.startsWith('lg#')) {
+    return false;
+  }
+  const suffix = normalized.slice(3);
+  return suffix.length === 0 || /^\d+/.test(suffix);
 }
 
 function elementEvidence(element: Element): string {
