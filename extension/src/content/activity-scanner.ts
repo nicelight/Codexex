@@ -299,6 +299,7 @@ function shouldIgnoreTaskKey(taskKey: string): boolean {
   return suffix.length === 0 || /^\d+/.test(suffix);
 }
 
+
 function isListingGroupContext(element: Element): boolean {
   let current: Element | null = element;
   const visited = new Set<Element>();
@@ -319,6 +320,7 @@ function isListingGroupContext(element: Element): boolean {
 
   return false;
 }
+
 
 function elementEvidence(element: Element): string {
   const tag = element.tagName.toLowerCase();
