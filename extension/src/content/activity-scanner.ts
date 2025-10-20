@@ -135,9 +135,6 @@ function collectStopSignals(
     if (isElementDisabled(element)) {
       return;
     }
-    if (isListingGroupContext(element)) {
-      return;
-    }
     if (!matchesStopHints(element, locale)) {
       return;
     }
@@ -145,6 +142,9 @@ function collectStopSignals(
     const evidenceIndex = signals.length;
     const taskKey = findTaskKey(element);
     if (taskKey && shouldIgnoreTaskKey(taskKey)) {
+      return;
+    }
+    if (!taskKey && isListingGroupContext(element)) {
       return;
     }
     signals.push({
