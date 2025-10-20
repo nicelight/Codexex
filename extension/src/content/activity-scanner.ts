@@ -135,12 +135,18 @@ function collectStopSignals(
     if (isElementDisabled(element)) {
       return;
     }
+    if (isListingGroupContext(element)) {
+      return;
+    }
     if (!matchesStopHints(element, locale)) {
       return;
     }
 
     const evidenceIndex = signals.length;
     const taskKey = findTaskKey(element);
+    if (taskKey && shouldIgnoreTaskKey(taskKey)) {
+      return;
+    }
     signals.push({
       detector: 'D2_STOP_BUTTON',
       evidence: `${elementEvidence(element)}#${evidenceIndex}`,
@@ -282,6 +288,36 @@ function findTaskKey(element: Element): string | undefined {
   }
 
   return undefined;
+}
+
+function shouldIgnoreTaskKey(taskKey: string): boolean {
+  const normalized = taskKey.trim().toLowerCase();
+  if (!normalized.startsWith('lg#')) {
+    return false;
+  }
+  const suffix = normalized.slice(3);
+  return suffix.length === 0 || /^\d+/.test(suffix);
+}
+
+function isListingGroupContext(element: Element): boolean {
+  let current: Element | null = element;
+  const visited = new Set<Element>();
+
+  while (current && !visited.has(current)) {
+    visited.add(current);
+    const candidates = [
+      current.getAttribute?.('data-task-id'),
+      current.getAttribute?.('data-id'),
+      current.getAttribute?.('data-reactid'),
+      current instanceof HTMLElement ? current.id : undefined,
+    ];
+    if (candidates.some((value) => (value ? shouldIgnoreTaskKey(value) : false))) {
+      return true;
+    }
+    current = current.parentElement;
+  }
+
+  return false;
 }
 
 function elementEvidence(element: Element): string {

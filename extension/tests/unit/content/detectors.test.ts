@@ -75,6 +75,40 @@ describe('ActivityScanner', () => {
     expect(signal?.taskKey).toBe('ru-task');
   });
 
+  it('ignores stop signals with listing group task keys', () => {
+    document.body.innerHTML = `
+      <div class="task" data-id="lg#0">
+        <button class="btn">Stop</button>
+      </div>
+      <div class="task" data-task-id="real-task">
+        <button class="btn">Cancel</button>
+      </div>
+    `;
+
+    const snapshot = createScanner().scan(Date.now());
+
+    const stopSignals = snapshot.signals.filter((signal) => signal.detector === 'D2_STOP_BUTTON');
+    expect(stopSignals).toHaveLength(1);
+    expect(stopSignals[0]?.taskKey).toBe('real-task');
+  });
+
+  it('ignores stop signals located inside listing group containers', () => {
+    document.body.innerHTML = `
+      <div id="lg#2">
+        <button class="btn">Stop</button>
+      </div>
+      <div class="task" data-task-id="real-task">
+        <button class="btn">Cancel</button>
+      </div>
+    `;
+
+    const snapshot = createScanner().scan(Date.now());
+
+    const stopSignals = snapshot.signals.filter((signal) => signal.detector === 'D2_STOP_BUTTON');
+    expect(stopSignals).toHaveLength(1);
+    expect(stopSignals[0]?.taskKey).toBe('real-task');
+  });
+
   it('ignores hidden and disabled stop controls', () => {
     document.body.innerHTML = `
       <div class="task" data-task-id="hidden" hidden>
