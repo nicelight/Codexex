@@ -58,7 +58,7 @@ describe('contracts validation helpers', () => {
           lastSeenAt: Date.now(),
           heartbeat: {
             lastReceivedAt: Date.now(),
-            expectedIntervalMs: 15000,
+            expectedIntervalMs: 5000,
             status: 'OK',
             missedCount: 0,
           },

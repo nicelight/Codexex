@@ -71,7 +71,7 @@
   - [x] Сохранять последнюю метку сканирования для дедупликации событий и покрыть граничные случаи unit-тестами.
 - [x] **Связь с background и устойчивость**
   - [x] Обрабатывать входящие сообщения (`PING`, `RESET`, `REQUEST_STATE`) с повторным подключением после `runtime.lastError`.
-  - [x] Поддерживать fail-safe таймер сканирования DOM (heartbeat): каждые ≤15 секунд формировать `TASKS_HEARTBEAT` по схеме `contracts/dto/content-heartbeat.schema.json` и экспортировать типы через `shared/contracts`.
+  - [x] Поддерживать fail-safe таймер сканирования DOM (heartbeat): каждые ≤5 секунд формировать `TASKS_HEARTBEAT` по схеме `contracts/dto/content-heartbeat.schema.json` и экспортировать типы через `shared/contracts`.
   - [x] Логировать ключевые события (инициализация, heartbeat, ошибки отправки) и учитывать verbose-флаг из `chrome.storage.session`.
 
 ## Фаза 3. Background service worker ✅ (v0.1.0)

@@ -18,7 +18,7 @@ import { ContentAudioController } from './audio';
 import { isCodexTaskDetailsPath, isCodexTasksListingPath, normalizePathname } from '../shared/url';
 
 const ZERO_DEBOUNCE_MS = 500;
-const HEARTBEAT_INTERVAL_MS = 15_000;
+const HEARTBEAT_INTERVAL_MS = 5_000;
 const MIN_SCAN_INTERVAL_MS = 1_000;
 const VERBOSE_KEY = 'codex.tasks.verbose';
 

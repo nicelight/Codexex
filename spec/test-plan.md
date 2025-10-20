@@ -37,7 +37,7 @@
    - When background обновляет агрегированное состояние без участия UI,
     - Then в течение нескольких секунд вызывается `chrome.tabs.update({ autoDiscardable: false })` для этой вкладки и она добавляется в список защищённых; при удалении вкладки защита снимается.
 7. **AC7 — Обнаружение и восстановление heartbeat**
-   - Given вкладка перестала отправлять `TASKS_HEARTBEAT` на 45 секунд,
+  - Given вкладка перестала отправлять `TASKS_HEARTBEAT` на 15 секунд,
    - When alarm `codex-poll` срабатывает и отправляет `PING`, контент-скрипт отвечает `TASKS_UPDATE` + `TASKS_HEARTBEAT`,
    - Then background сразу после получения `TASKS_HEARTBEAT` обновляет `tabs[tabId].lastSeenAt` и `tabs[tabId].heartbeat.lastReceivedAt`, сбрасывает `missedCount`, переводит статус в `OK` и возвращает вкладку в агрегированное состояние «жива».
 

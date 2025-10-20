@@ -115,7 +115,7 @@ describe('content runtime', () => {
     expect(messages).toHaveLength(2);
     expect(messages[1]).toMatchObject({ type: 'TASKS_UPDATE', count: 0 });
 
-    await vi.advanceTimersByTimeAsync(15_000);
+    await vi.advanceTimersByTimeAsync(5_000);
     expect(messages).toHaveLength(3);
     expect(messages[2]).toMatchObject({ type: 'TASKS_HEARTBEAT' });
 

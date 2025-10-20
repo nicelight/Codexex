@@ -293,7 +293,7 @@ describe('JSON schema contracts', () => {
       origin: 'https://codex.openai.com/tab',
       ts: 2_000,
       lastUpdateTs: 1_500,
-      intervalMs: 15_000,
+      intervalMs: 5_000,
     };
     expect(validate(heartbeat)).toBe(true);
 

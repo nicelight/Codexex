@@ -29,7 +29,7 @@ describe('generatePopupRenderState', () => {
           lastSeenAt: 2_000,
           heartbeat: {
             lastReceivedAt: 2_000,
-            expectedIntervalMs: 15_000,
+            expectedIntervalMs: 5_000,
             status: 'OK' as const,
             missedCount: 0,
           },
@@ -46,7 +46,7 @@ describe('generatePopupRenderState', () => {
           lastSeenAt: 3_500,
           heartbeat: {
             lastReceivedAt: 3_500,
-            expectedIntervalMs: 15_000,
+            expectedIntervalMs: 5_000,
             status: 'STALE' as const,
             missedCount: 1,
           },
@@ -91,7 +91,7 @@ describe('generatePopupRenderState', () => {
           lastSeenAt: 1_000,
           heartbeat: {
             lastReceivedAt: 1_000,
-            expectedIntervalMs: 15_000,
+            expectedIntervalMs: 5_000,
             status: 'OK' as const,
             missedCount: 0,
           },
@@ -105,7 +105,7 @@ describe('generatePopupRenderState', () => {
           lastSeenAt: 1_100,
           heartbeat: {
             lastReceivedAt: 1_100,
-            expectedIntervalMs: 15_000,
+            expectedIntervalMs: 5_000,
             status: 'OK' as const,
             missedCount: 0,
           },
