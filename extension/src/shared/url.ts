@@ -10,6 +10,14 @@ export function normalizePathname(pathname: string | null | undefined): string {
 
 const TASK_LISTING_PATHS = new Set(['/codex']);
 
+export type MainCodexListingTab = 'all' | 'code_reviews';
+
+const MAIN_LISTING_TAB_VALUES = new Map<string, MainCodexListingTab>([
+  ['', 'all'],
+  ['all', 'all'],
+  ['code_reviews', 'code_reviews'],
+]);
+
 export function isCodexTasksListingPath(normalizedPathname: string): boolean {
   return TASK_LISTING_PATHS.has(normalizedPathname);
 }
@@ -60,21 +68,26 @@ function safeParseUrl(href: string): URL | undefined {
   }
 }
 
-export function isMainCodexListingUrl(href: string): boolean {
+export function resolveMainCodexListingTab(href: string): MainCodexListingTab | undefined {
   const parsed = safeParseUrl(href);
   if (!parsed) {
-    return false;
+    return undefined;
   }
 
   const normalizedPathname = normalizePathname(parsed.pathname);
   if (!isCodexTasksListingPath(normalizedPathname)) {
-    return false;
+    return undefined;
   }
 
   const tabParam = parsed.searchParams.get('tab');
   if (!tabParam) {
-    return true;
+    return 'all';
   }
 
-  return tabParam.toLowerCase() === 'all';
+  const normalizedTab = tabParam.trim().toLowerCase();
+  return MAIN_LISTING_TAB_VALUES.get(normalizedTab);
+}
+
+export function isMainCodexListingUrl(href: string): boolean {
+  return resolveMainCodexListingTab(href) !== undefined;
 }

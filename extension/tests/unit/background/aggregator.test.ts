@@ -121,6 +121,37 @@ describe('BackgroundAggregator', () => {
     expect(snapshot.tabs['3'].count).toBe(1);
   });
 
+  it('aggregates totals across distinct listing tabs', async () => {
+    const { aggregator } = createAggregatorInstance();
+    await aggregator.ready;
+
+    const allTabMessage: ContentScriptTasksUpdate = {
+      type: 'TASKS_UPDATE',
+      origin: 'https://chatgpt.com/codex?tab=all',
+      active: true,
+      count: 2,
+      signals: [
+        { detector: 'D1_SPINNER', evidence: 'spinner' },
+        { detector: 'D2_STOP_BUTTON', evidence: 'stop-button', taskKey: 'stop:42' },
+      ],
+      ts: 1_000,
+    };
+    const allSender = { tab: { id: 4, title: 'Codex – All tasks' } } as chrome.runtime.MessageSender;
+    await aggregator.handleTasksUpdate(allTabMessage, allSender);
+
+    const reviewsMessage: ContentScriptTasksUpdate = {
+      ...allTabMessage,
+      origin: 'https://chatgpt.com/codex?tab=code_reviews',
+      count: 3,
+      ts: 1_500,
+    };
+    const reviewSender = { tab: { id: 9, title: 'Codex – Code reviews' } } as chrome.runtime.MessageSender;
+    await aggregator.handleTasksUpdate(reviewsMessage, reviewSender);
+
+    const snapshot = await aggregator.getSnapshot();
+    expect(snapshot.lastTotal).toBe(5);
+  });
+
   it('ignores task detail counters when listing tabs are absent', async () => {
     const { aggregator } = createAggregatorInstance();
     await aggregator.ready;
