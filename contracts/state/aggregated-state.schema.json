@@ -16,7 +16,7 @@
     "lastTotal": {
       "type": "integer",
       "minimum": 0,
-      "description": "Суммарное количество активных задач по всем вкладкам"
+      "description": "Суммарное количество активных задач по всем вкладкам главного списка Codex (отдельно суммируется максимум для вкладок tab=all и tab=code_reviews)"
     },
     "debounce": {
       "$ref": "#/definitions/debounceState"
@@ -31,7 +31,7 @@
         "origin": {
           "type": "string",
           "format": "uri",
-          "description": "URL вкладки Codex"
+          "description": "URL вкладки Codex (https://chatgpt.com/codex или с параметром tab=all|code_reviews)"
         },
         "title": {
           "type": "string",

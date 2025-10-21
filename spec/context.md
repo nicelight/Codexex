@@ -10,8 +10,8 @@
 
 ## Target Solution (высокоуровнево)
 - Расширение Chrome (Manifest V3) с минимальными правами (`storage`, `notifications`, `alarms`, `scripting`, `tabs`, узкие `host_permissions`).
-- Content script собирает сигналы из DOM (спиннеры, кнопки Stop, эвристики карточек) и отправляет состояние фоновой службе.
-- Background service worker агрегирует состояния вкладок, применяет антидребезг, управляет уведомлениями и политикой autoDiscardable.
+- Content script собирает сигналы из DOM (спиннеры, кнопки Stop, эвристики карточек) и отправляет состояние фоновой службе, поддерживая главный список Codex (`/codex`) во вкладках `tab=all` и `tab=code_reviews`.
+- Background service worker агрегирует состояния вкладок, применяет антидребезг, управляет уведомлениями и политикой autoDiscardable, суммируя активные задачи отдельно по вкладкам `tab=all` и `tab=code_reviews`.
 - Popup отображает список активных задач или подтверждает их отсутствие.
 
 ## Key Functional Requirements
