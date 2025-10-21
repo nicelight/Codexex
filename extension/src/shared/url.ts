@@ -8,7 +8,7 @@ export function normalizePathname(pathname: string | null | undefined): string {
   return pathname.replace(/\/+$/, '') || '/';
 }
 
-const TASK_LISTING_PATHS = new Set(['/codex', '/codex/tasks', '/plan']);
+const TASK_LISTING_PATHS = new Set(['/codex']);
 
 export function isCodexTasksListingPath(normalizedPathname: string): boolean {
   if (TASK_LISTING_PATHS.has(normalizedPathname)) {
