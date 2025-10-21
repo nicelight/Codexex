@@ -188,6 +188,211 @@ describe('BackgroundAggregator', () => {
     expect(snapshot.lastTotal).toBe(2);
   });
 
+  it('falls back to other listing totals when root listing reports zero', async () => {
+    const { aggregator } = createAggregatorInstance();
+    await aggregator.ready;
+
+    const rootListing: ContentScriptTasksUpdate = {
+      type: 'TASKS_UPDATE',
+      origin: 'https://chatgpt.com/codex',
+      active: false,
+      count: 0,
+      signals: [],
+      ts: 3_000,
+    };
+    const rootSender = { tab: { id: 21, title: 'Codex – Tasks' } } as chrome.runtime.MessageSender;
+    await aggregator.handleTasksUpdate(rootListing, rootSender);
+
+    const otherListing: ContentScriptTasksUpdate = {
+      type: 'TASKS_UPDATE',
+      origin: 'https://chatgpt.com/codex/tasks?tab=queued',
+      active: true,
+      count: 3,
+      signals: [
+        { detector: 'D2_STOP_BUTTON', evidence: 'stop-button', taskKey: 'stop:queued' },
+      ],
+      ts: 3_500,
+    };
+    const otherSender = { tab: { id: 22, title: 'Codex – Tasks (Queued)' } } as chrome.runtime.MessageSender;
+    await aggregator.handleTasksUpdate(otherListing, otherSender);
+
+    const snapshot = await aggregator.getSnapshot();
+    expect(snapshot.lastTotal).toBe(3);
+  });
+
+  it('prioritizes home and all tab totals over other listings', async () => {
+    const { aggregator } = createAggregatorInstance();
+    await aggregator.ready;
+
+    const tasksListing: ContentScriptTasksUpdate = {
+      type: 'TASKS_UPDATE',
+      origin: 'https://chatgpt.com/codex/tasks',
+      active: true,
+      count: 9,
+      signals: [
+        { detector: 'D2_STOP_BUTTON', evidence: 'stop-button', taskKey: 'stop:tasks' },
+      ],
+      ts: 4_000,
+    };
+    const tasksSender = { tab: { id: 31, title: 'Codex – Tasks Listing' } } as chrome.runtime.MessageSender;
+    await aggregator.handleTasksUpdate(tasksListing, tasksSender);
+
+    const reviewListing: ContentScriptTasksUpdate = {
+      type: 'TASKS_UPDATE',
+      origin: 'https://chatgpt.com/codex?tab=code_reviews',
+      active: true,
+      count: 11,
+      signals: [
+        { detector: 'D2_STOP_BUTTON', evidence: 'stop-button', taskKey: 'stop:reviews' },
+      ],
+      ts: 4_100,
+    };
+    const reviewSender = { tab: { id: 32, title: 'Codex – Reviews' } } as chrome.runtime.MessageSender;
+    await aggregator.handleTasksUpdate(reviewListing, reviewSender);
+
+    const homeListing: ContentScriptTasksUpdate = {
+      type: 'TASKS_UPDATE',
+      origin: 'https://chatgpt.com/',
+      active: true,
+      count: 4,
+      signals: [
+        { detector: 'D2_STOP_BUTTON', evidence: 'stop-button', taskKey: 'stop:home' },
+      ],
+      ts: 4_200,
+    };
+    const homeSender = { tab: { id: 33, title: 'ChatGPT Home' } } as chrome.runtime.MessageSender;
+    await aggregator.handleTasksUpdate(homeListing, homeSender);
+
+    const allListing: ContentScriptTasksUpdate = {
+      type: 'TASKS_UPDATE',
+      origin: 'https://chatgpt.com/codex?tab=all',
+      active: true,
+      count: 6,
+      signals: [
+        { detector: 'D2_STOP_BUTTON', evidence: 'stop-button', taskKey: 'stop:all' },
+      ],
+      ts: 4_300,
+    };
+    const allSender = { tab: { id: 34, title: 'Codex – All Tasks' } } as chrome.runtime.MessageSender;
+    await aggregator.handleTasksUpdate(allListing, allSender);
+
+    const snapshot = await aggregator.getSnapshot();
+    expect(snapshot.lastTotal).toBe(6);
+  });
+
+  it('prefers tasks listings when higher priority tabs report zero totals', async () => {
+    const { aggregator } = createAggregatorInstance();
+    await aggregator.ready;
+
+    const rootZero: ContentScriptTasksUpdate = {
+      type: 'TASKS_UPDATE',
+      origin: 'https://chatgpt.com/codex?tab=all',
+      active: false,
+      count: 0,
+      signals: [],
+      ts: 5_000,
+    };
+    const rootSender = { tab: { id: 41, title: 'Codex – All Tasks' } } as chrome.runtime.MessageSender;
+    await aggregator.handleTasksUpdate(rootZero, rootSender);
+
+    const reviewListing: ContentScriptTasksUpdate = {
+      type: 'TASKS_UPDATE',
+      origin: 'https://chatgpt.com/codex?tab=code_reviews',
+      active: true,
+      count: 7,
+      signals: [
+        { detector: 'D2_STOP_BUTTON', evidence: 'stop-button', taskKey: 'stop:reviews' },
+      ],
+      ts: 5_100,
+    };
+    const reviewSender = { tab: { id: 42, title: 'Codex – Reviews' } } as chrome.runtime.MessageSender;
+    await aggregator.handleTasksUpdate(reviewListing, reviewSender);
+
+    const tasksListing: ContentScriptTasksUpdate = {
+      type: 'TASKS_UPDATE',
+      origin: 'https://chatgpt.com/codex/tasks',
+      active: true,
+      count: 5,
+      signals: [
+        { detector: 'D2_STOP_BUTTON', evidence: 'stop-button', taskKey: 'stop:tasks' },
+      ],
+      ts: 5_200,
+    };
+    const tasksSender = { tab: { id: 43, title: 'Codex – Tasks Listing' } } as chrome.runtime.MessageSender;
+    await aggregator.handleTasksUpdate(tasksListing, tasksSender);
+
+    const snapshot = await aggregator.getSnapshot();
+    expect(snapshot.lastTotal).toBe(5);
+  });
+
+  it('falls back to review and archive tabs when other priorities are absent', async () => {
+    const { aggregator } = createAggregatorInstance();
+    await aggregator.ready;
+
+    const reviewListing: ContentScriptTasksUpdate = {
+      type: 'TASKS_UPDATE',
+      origin: 'https://chatgpt.com/codex?tab=code_reviews',
+      active: true,
+      count: 3,
+      signals: [
+        { detector: 'D2_STOP_BUTTON', evidence: 'stop-button', taskKey: 'stop:reviews' },
+      ],
+      ts: 6_000,
+    };
+    const reviewSender = { tab: { id: 51, title: 'Codex – Reviews' } } as chrome.runtime.MessageSender;
+    await aggregator.handleTasksUpdate(reviewListing, reviewSender);
+
+    const archivedListing: ContentScriptTasksUpdate = {
+      type: 'TASKS_UPDATE',
+      origin: 'https://chatgpt.com/codex?tab=archived',
+      active: true,
+      count: 4,
+      signals: [
+        { detector: 'D2_STOP_BUTTON', evidence: 'stop-button', taskKey: 'stop:archived' },
+      ],
+      ts: 6_100,
+    };
+    const archivedSender = { tab: { id: 52, title: 'Codex – Archived' } } as chrome.runtime.MessageSender;
+    await aggregator.handleTasksUpdate(archivedListing, archivedSender);
+
+    const snapshot = await aggregator.getSnapshot();
+    expect(snapshot.lastTotal).toBe(4);
+  });
+
+  it('aggregates non-prioritized listings when no priority sources are active', async () => {
+    const { aggregator } = createAggregatorInstance();
+    await aggregator.ready;
+
+    const queuedListing: ContentScriptTasksUpdate = {
+      type: 'TASKS_UPDATE',
+      origin: 'https://chatgpt.com/codex?tab=queued',
+      active: true,
+      count: 4,
+      signals: [
+        { detector: 'D2_STOP_BUTTON', evidence: 'stop-button', taskKey: 'stop:queued' },
+      ],
+      ts: 7_000,
+    };
+    const queuedSender = { tab: { id: 61, title: 'Codex – Queued' } } as chrome.runtime.MessageSender;
+    await aggregator.handleTasksUpdate(queuedListing, queuedSender);
+
+    const planListing: ContentScriptTasksUpdate = {
+      type: 'TASKS_UPDATE',
+      origin: 'https://chatgpt.com/plan',
+      active: true,
+      count: 2,
+      signals: [
+        { detector: 'D2_STOP_BUTTON', evidence: 'stop-button', taskKey: 'stop:plan' },
+      ],
+      ts: 7_100,
+    };
+    const planSender = { tab: { id: 62, title: 'Plan – Tasks' } } as chrome.runtime.MessageSender;
+    await aggregator.handleTasksUpdate(planListing, planSender);
+
+    const snapshot = await aggregator.getSnapshot();
+    expect(snapshot.lastTotal).toBe(6);
+  });
+
   it('removes tab state when tasks update originates outside Codex', async () => {
     const { aggregator } = createAggregatorInstance();
     await aggregator.ready;
