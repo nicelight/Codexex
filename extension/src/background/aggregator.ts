@@ -746,71 +746,29 @@ function cloneState(state: AggregatedTabsState): AggregatedTabsState {
 }
 
 function deriveAggregatedTotal(tabs: Record<string, AggregatedTabState>): number {
-  type ListingPriority = 1 | 2 | 3 | null;
-  interface ListingGroupState {
-    count: number;
-    priority: ListingPriority;
-  }
-
-  const listingGroups = new Map<string, ListingGroupState>();
-  let taskDetailsCount = 0;
-  let hasTaskDetails = false;
+  let bestListingCount = 0;
   let fallbackTotal = 0;
 
   for (const tab of Object.values(tabs)) {
     const canonical = canonicalizeCodexUrl(tab.origin);
     const classification = classifyAggregatedLocation(tab.origin, canonical);
     if (classification?.kind === 'listing') {
-      const previous = listingGroups.get(classification.key)?.count ?? 0;
-      const next = tab.count > previous ? tab.count : previous;
-      listingGroups.set(classification.key, { count: next, priority: classification.priority });
-      continue;
-    }
-    if (classification?.kind === 'details') {
-      hasTaskDetails = true;
-      taskDetailsCount = Math.max(taskDetailsCount, tab.count);
+      if (tab.count > bestListingCount) {
+        bestListingCount = tab.count;
+      }
       continue;
     }
     fallbackTotal += tab.count;
   }
 
-  if (listingGroups.size > 0) {
-    const priorityBuckets = new Map<ListingPriority, number>();
-    let otherListingTotal = 0;
-
-    for (const { count, priority } of listingGroups.values()) {
-      if (priority === null) {
-        otherListingTotal += count;
-        continue;
-      }
-      const current = priorityBuckets.get(priority) ?? 0;
-      if (count > current) {
-        priorityBuckets.set(priority, count);
-      }
-    }
-
-    for (const priority of [1, 2, 3] as const) {
-      const candidate = priorityBuckets.get(priority);
-      if (candidate && candidate > 0) {
-        return candidate;
-      }
-    }
-
-    if (otherListingTotal > 0) {
-      return otherListingTotal;
-    }
-  }
-
-  if (hasTaskDetails) {
-    return taskDetailsCount;
+  if (bestListingCount > 0) {
+    return bestListingCount;
   }
 
   return fallbackTotal;
 }
 
-type AggregatedLocationClassification =
-  | { kind: 'listing'; key: string; priority: 1 | 2 | 3 | null }
-  | { kind: 'details' };
+type AggregatedLocationClassification = { kind: 'listing' };
 
 function classifyAggregatedLocation(
   origin: string,
@@ -820,55 +778,29 @@ function classifyAggregatedLocation(
     return undefined;
   }
 
-  if (canonical.isTaskDetails) {
-    return { kind: 'details' };
-  }
-
   const url = safeParseUrl(origin);
   const normalizedPathname = canonical.normalizedPathname;
-
-  if (!url) {
-    if (canonical.isTasksListing) {
-      return { kind: 'listing', key: canonical.canonical, priority: null };
-    }
-    return undefined;
-  }
-
-  const hostname = url.hostname.toLowerCase();
-  const isChatGptHost =
-    hostname === 'chatgpt.com' ||
-    hostname.endsWith('.chatgpt.com') ||
-    hostname === 'chat.openai.com' ||
-    hostname.endsWith('.chat.openai.com');
-
-  if (isChatGptHost && normalizedPathname === '/') {
-    return { kind: 'listing', key: 'listing:home', priority: 1 };
-  }
 
   if (!canonical.isTasksListing) {
     return undefined;
   }
 
-  if (normalizedPathname === '/codex') {
-    const tabParam = url.searchParams.get('tab');
-    const normalizedTab = tabParam ? tabParam.toLowerCase() : null;
-
-    if (!normalizedTab || normalizedTab === 'all') {
-      return { kind: 'listing', key: 'listing:codex:all', priority: 1 };
-    }
-
-    if (normalizedTab === 'code_reviews' || normalizedTab === 'archived') {
-      return { kind: 'listing', key: `listing:codex:${normalizedTab}`, priority: 3 };
-    }
-
-    return { kind: 'listing', key: canonical.canonical, priority: null };
+  if (normalizedPathname !== '/codex') {
+    return undefined;
   }
 
-  if (normalizedPathname === '/codex/tasks') {
-    return { kind: 'listing', key: 'listing:codex:tasks', priority: 2 };
+  if (!url) {
+    return { kind: 'listing' };
   }
 
-  return { kind: 'listing', key: canonical.canonical, priority: null };
+  const tabParam = url.searchParams.get('tab');
+  const normalizedTab = tabParam ? tabParam.toLowerCase() : null;
+
+  if (normalizedTab && normalizedTab !== 'all') {
+    return undefined;
+  }
+
+  return { kind: 'listing' };
 }
 
 function safeParseUrl(href: string): URL | undefined {
