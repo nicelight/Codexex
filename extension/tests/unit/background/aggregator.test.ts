@@ -280,6 +280,40 @@ describe('BackgroundAggregator', () => {
     expect(snapshot.lastTotal).toBe(6);
   });
 
+  it('prioritizes chat.openai.com home totals over other listings', async () => {
+    const { aggregator } = createAggregatorInstance();
+    await aggregator.ready;
+
+    const tasksListing: ContentScriptTasksUpdate = {
+      type: 'TASKS_UPDATE',
+      origin: 'https://chat.openai.com/codex/tasks',
+      active: true,
+      count: 5,
+      signals: [
+        { detector: 'D2_STOP_BUTTON', evidence: 'stop-button', taskKey: 'stop:tasks' },
+      ],
+      ts: 4_400,
+    };
+    const tasksSender = { tab: { id: 35, title: 'Codex – Tasks Listing' } } as chrome.runtime.MessageSender;
+    await aggregator.handleTasksUpdate(tasksListing, tasksSender);
+
+    const homeListing: ContentScriptTasksUpdate = {
+      type: 'TASKS_UPDATE',
+      origin: 'https://chat.openai.com/',
+      active: true,
+      count: 3,
+      signals: [
+        { detector: 'D2_STOP_BUTTON', evidence: 'stop-button', taskKey: 'stop:home' },
+      ],
+      ts: 4_500,
+    };
+    const homeSender = { tab: { id: 36, title: 'ChatGPT Home' } } as chrome.runtime.MessageSender;
+    await aggregator.handleTasksUpdate(homeListing, homeSender);
+
+    const snapshot = await aggregator.getSnapshot();
+    expect(snapshot.lastTotal).toBe(3);
+  });
+
   it('prefers tasks listings when higher priority tabs report zero totals', async () => {
     const { aggregator } = createAggregatorInstance();
     await aggregator.ready;

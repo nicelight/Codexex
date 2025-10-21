@@ -152,7 +152,10 @@ class BackgroundAggregatorImpl implements BackgroundAggregator {
         const tabKey = String(tabId);
         const hadExisting = Object.prototype.hasOwnProperty.call(previous?.tabs ?? {}, tabKey);
         const canonical = canonicalizeCodexUrl(message.origin);
-        const supportsAggregation = Boolean(canonical?.isTasksListing || canonical?.isTaskDetails);
+        const classification = classifyAggregatedLocation(message.origin, canonical);
+        const supportsAggregation = Boolean(
+          canonical?.isTasksListing || canonical?.isTaskDetails || classification?.kind === 'listing',
+        );
         if (!supportsAggregation) {
           let mutated = false;
           if (tabKey in next.tabs) {
@@ -254,7 +257,10 @@ class BackgroundAggregatorImpl implements BackgroundAggregator {
         const tabKey = String(tabId);
         const hadExisting = Object.prototype.hasOwnProperty.call(previous?.tabs ?? {}, tabKey);
         const canonical = canonicalizeCodexUrl(message.origin);
-        const supportsAggregation = Boolean(canonical?.isTasksListing || canonical?.isTaskDetails);
+        const classification = classifyAggregatedLocation(message.origin, canonical);
+        const supportsAggregation = Boolean(
+          canonical?.isTasksListing || canonical?.isTaskDetails || classification?.kind === 'listing',
+        );
         if (!supportsAggregation) {
           let mutated = false;
           if (tabKey in next.tabs) {
@@ -829,7 +835,11 @@ function classifyAggregatedLocation(
   }
 
   const hostname = url.hostname.toLowerCase();
-  const isChatGptHost = hostname === 'chatgpt.com' || hostname.endsWith('.chatgpt.com');
+  const isChatGptHost =
+    hostname === 'chatgpt.com' ||
+    hostname.endsWith('.chatgpt.com') ||
+    hostname === 'chat.openai.com' ||
+    hostname.endsWith('.chat.openai.com');
 
   if (isChatGptHost && normalizedPathname === '/') {
     return { kind: 'listing', key: 'listing:home', priority: 1 };
