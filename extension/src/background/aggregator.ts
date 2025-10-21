@@ -15,7 +15,7 @@ import {
   type ChromeLogger,
 } from '../shared/chrome';
 import { getSessionStateKey } from '../shared/storage';
-import { isMainCodexListingUrl } from '../shared/url';
+import { isMainCodexListingUrl, resolveMainCodexListingTab } from '../shared/url';
 import { SETTINGS_DEFAULTS } from '../shared/settings';
 import type { BackgroundSettingsController } from './settings-controller';
 
@@ -741,18 +741,25 @@ function cloneState(state: AggregatedTabsState): AggregatedTabsState {
 }
 
 function deriveAggregatedTotal(tabs: Record<string, AggregatedTabState>): number {
-  let bestListingCount = 0;
+  const countsByListing = new Map<string, number>();
 
   for (const tab of Object.values(tabs)) {
-    if (!isMainCodexListingUrl(tab.origin)) {
+    const listingTab = resolveMainCodexListingTab(tab.origin);
+    if (!listingTab) {
       continue;
     }
-    if (tab.count > bestListingCount) {
-      bestListingCount = tab.count;
+    const currentBest = countsByListing.get(listingTab) ?? 0;
+    if (tab.count > currentBest) {
+      countsByListing.set(listingTab, tab.count);
     }
   }
 
-  return bestListingCount;
+  let total = 0;
+  for (const count of countsByListing.values()) {
+    total += count;
+  }
+
+  return total;
 }
 
 function areAllCountsZero(tabs: Record<string, AggregatedTabState>): boolean {
