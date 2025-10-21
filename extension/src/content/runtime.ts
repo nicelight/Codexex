@@ -15,7 +15,7 @@ import {
 import { ActivityScanner, type TaskActivitySnapshot } from './activity-scanner';
 import { onBackgroundEvent, postToBackground } from './messaging';
 import { ContentAudioController } from './audio';
-import { isCodexTasksListingPath, normalizePathname } from '../shared/url';
+import { isMainCodexListingUrl } from '../shared/url';
 
 const ZERO_DEBOUNCE_MS = 500;
 const HEARTBEAT_INTERVAL_MS = 5_000;
@@ -31,8 +31,8 @@ type BackgroundEvent =
   | { type: string; [key: string]: unknown };
 
 function shouldScanLocation(location: Location): boolean {
-  const normalizedPath = normalizePathname(location?.pathname ?? '/');
-  return isCodexTasksListingPath(normalizedPath);
+  const href = location?.href ?? '';
+  return href.length > 0 && isMainCodexListingUrl(href);
 }
 
 function createIdleSnapshot(ts: number): TaskActivitySnapshot {

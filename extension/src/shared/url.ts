@@ -11,10 +11,7 @@ export function normalizePathname(pathname: string | null | undefined): string {
 const TASK_LISTING_PATHS = new Set(['/codex']);
 
 export function isCodexTasksListingPath(normalizedPathname: string): boolean {
-  if (TASK_LISTING_PATHS.has(normalizedPathname)) {
-    return true;
-  }
-  return false;
+  return TASK_LISTING_PATHS.has(normalizedPathname);
 }
 
 export function isCodexTaskDetailsPath(normalizedPathname: string): boolean {
@@ -52,4 +49,32 @@ export function canonicalizeCodexUrl(href: string): CanonicalCodexLocation | und
     console.warn('failed to canonicalize url', { href, error });
     return undefined;
   }
+}
+
+function safeParseUrl(href: string): URL | undefined {
+  try {
+    return new URL(href);
+  } catch (error) {
+    console.warn('failed to parse url while matching Codex listing', { href, error });
+    return undefined;
+  }
+}
+
+export function isMainCodexListingUrl(href: string): boolean {
+  const parsed = safeParseUrl(href);
+  if (!parsed) {
+    return false;
+  }
+
+  const normalizedPathname = normalizePathname(parsed.pathname);
+  if (!isCodexTasksListingPath(normalizedPathname)) {
+    return false;
+  }
+
+  const tabParam = parsed.searchParams.get('tab');
+  if (!tabParam) {
+    return true;
+  }
+
+  return tabParam.toLowerCase() === 'all';
 }
