@@ -296,7 +296,10 @@ function shouldIgnoreTaskKey(taskKey: string): boolean {
     return false;
   }
   const suffix = normalized.slice(3);
-  return suffix.length === 0 || /^\d+/.test(suffix);
+  if (suffix.length === 0) {
+    return true;
+  }
+  return /^\d+$/.test(suffix);
 }
 
 

@@ -92,6 +92,20 @@ describe('ActivityScanner', () => {
     expect(stopSignals[0]?.taskKey).toBe('real-task');
   });
 
+  it('keeps stop signals when listing group prefix has task suffix', () => {
+    document.body.innerHTML = `
+      <div class="task" data-task-id="lg#0#real">
+        <button class="btn">Stop</button>
+      </div>
+    `;
+
+    const snapshot = createScanner().scan(Date.now());
+
+    const stopSignals = snapshot.signals.filter((signal) => signal.detector === 'D2_STOP_BUTTON');
+    expect(stopSignals).toHaveLength(1);
+    expect(stopSignals[0]?.taskKey).toBe('lg#0#real');
+  });
+
   it('ignores stop signals located inside listing group containers', () => {
     document.body.innerHTML = `
       <div id="lg#2">
