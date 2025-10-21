@@ -193,7 +193,7 @@ describe('content runtime', () => {
     runtime.destroy();
   });
 
-  it('detects activity on the plan listing path', async () => {
+  it('does not scan the plan listing path', async () => {
     setWindowLocation('https://chatgpt.com/plan');
     const runtime = new ContentScriptRuntime({ window });
     await runtime.start();
@@ -210,16 +210,18 @@ describe('content runtime', () => {
       () => undefined,
     );
     await flushMicrotasks();
-    await vi.advanceTimersByTimeAsync(10);
+    await vi.advanceTimersByTimeAsync(500);
 
     const messages = chromeMock!.__messages;
     const positiveUpdate = findLastTasksUpdate(messages, (message) => (message.count ?? 0) > 0);
-    expect(positiveUpdate).toBeDefined();
+    expect(positiveUpdate).toBeUndefined();
+    const zeroUpdate = findLastTasksUpdate(messages, (message) => message.count === 0);
+    expect(zeroUpdate).toBeDefined();
 
     runtime.destroy();
   });
 
-  it('scans task details page for activity counters', async () => {
+  it('does not scan task details pages for activity counters', async () => {
     setWindowLocation('https://chatgpt.com/codex/tasks/task_123');
     const runtime = new ContentScriptRuntime({ window });
     await runtime.start();
@@ -242,8 +244,9 @@ describe('content runtime', () => {
 
     const messages = chromeMock!.__messages;
     const positiveUpdate = findLastTasksUpdate(messages, (message) => (message.count ?? 0) > 0);
-    expect(positiveUpdate).toBeDefined();
-    expect(positiveUpdate?.count).toBe(3);
+    expect(positiveUpdate).toBeUndefined();
+    const zeroUpdate = findLastTasksUpdate(messages, (message) => message.count === 0);
+    expect(zeroUpdate).toBeDefined();
 
     runtime.destroy();
   });

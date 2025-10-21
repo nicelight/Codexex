@@ -15,7 +15,7 @@ import {
   type ChromeLogger,
 } from '../shared/chrome';
 import { getSessionStateKey } from '../shared/storage';
-import { canonicalizeCodexUrl } from '../shared/url';
+import { isMainCodexListingUrl } from '../shared/url';
 import { SETTINGS_DEFAULTS } from '../shared/settings';
 import type { BackgroundSettingsController } from './settings-controller';
 
@@ -151,11 +151,7 @@ class BackgroundAggregatorImpl implements BackgroundAggregator {
       (next, previous) => {
         const tabKey = String(tabId);
         const hadExisting = Object.prototype.hasOwnProperty.call(previous?.tabs ?? {}, tabKey);
-        const canonical = canonicalizeCodexUrl(message.origin);
-        const classification = classifyAggregatedLocation(message.origin, canonical);
-        const supportsAggregation = Boolean(
-          canonical?.isTasksListing || canonical?.isTaskDetails || classification?.kind === 'listing',
-        );
+        const supportsAggregation = isMainCodexListingUrl(message.origin);
         if (!supportsAggregation) {
           let mutated = false;
           if (tabKey in next.tabs) {
@@ -256,11 +252,7 @@ class BackgroundAggregatorImpl implements BackgroundAggregator {
       (next, previous) => {
         const tabKey = String(tabId);
         const hadExisting = Object.prototype.hasOwnProperty.call(previous?.tabs ?? {}, tabKey);
-        const canonical = canonicalizeCodexUrl(message.origin);
-        const classification = classifyAggregatedLocation(message.origin, canonical);
-        const supportsAggregation = Boolean(
-          canonical?.isTasksListing || canonical?.isTaskDetails || classification?.kind === 'listing',
-        );
+        const supportsAggregation = isMainCodexListingUrl(message.origin);
         if (!supportsAggregation) {
           let mutated = false;
           if (tabKey in next.tabs) {
@@ -688,6 +680,9 @@ function ensureDebounceDefaults(debounce: AggregatedDebounceState): void {
 function normalizeState(state: AggregatedTabsState): AggregatedTabsState {
   const normalizedTabs: Record<string, AggregatedTabState> = {};
   for (const [tabId, tab] of Object.entries(state.tabs ?? {})) {
+    if (!isMainCodexListingUrl(tab.origin)) {
+      continue;
+    }
     normalizedTabs[tabId] = normalizeTabState(tab);
   }
   const normalized: AggregatedTabsState = {
@@ -747,69 +742,17 @@ function cloneState(state: AggregatedTabsState): AggregatedTabsState {
 
 function deriveAggregatedTotal(tabs: Record<string, AggregatedTabState>): number {
   let bestListingCount = 0;
-  let fallbackTotal = 0;
 
   for (const tab of Object.values(tabs)) {
-    const canonical = canonicalizeCodexUrl(tab.origin);
-    const classification = classifyAggregatedLocation(tab.origin, canonical);
-    if (classification?.kind === 'listing') {
-      if (tab.count > bestListingCount) {
-        bestListingCount = tab.count;
-      }
+    if (!isMainCodexListingUrl(tab.origin)) {
       continue;
     }
-    fallbackTotal += tab.count;
+    if (tab.count > bestListingCount) {
+      bestListingCount = tab.count;
+    }
   }
 
-  if (bestListingCount > 0) {
-    return bestListingCount;
-  }
-
-  return fallbackTotal;
-}
-
-type AggregatedLocationClassification = { kind: 'listing' };
-
-function classifyAggregatedLocation(
-  origin: string,
-  canonical: ReturnType<typeof canonicalizeCodexUrl>,
-): AggregatedLocationClassification | undefined {
-  if (!canonical) {
-    return undefined;
-  }
-
-  const url = safeParseUrl(origin);
-  const normalizedPathname = canonical.normalizedPathname;
-
-  if (!canonical.isTasksListing) {
-    return undefined;
-  }
-
-  if (normalizedPathname !== '/codex') {
-    return undefined;
-  }
-
-  if (!url) {
-    return { kind: 'listing' };
-  }
-
-  const tabParam = url.searchParams.get('tab');
-  const normalizedTab = tabParam ? tabParam.toLowerCase() : null;
-
-  if (normalizedTab && normalizedTab !== 'all') {
-    return undefined;
-  }
-
-  return { kind: 'listing' };
-}
-
-function safeParseUrl(href: string): URL | undefined {
-  try {
-    return new URL(href);
-  } catch (error) {
-    console.warn('failed to parse url while classifying aggregated location', { href, error });
-    return undefined;
-  }
+  return bestListingCount;
 }
 
 function areAllCountsZero(tabs: Record<string, AggregatedTabState>): boolean {

@@ -15,7 +15,7 @@ import { initializeAudioTrigger } from './audio-trigger';
 import { generatePopupRenderState } from './popup-state';
 import { registerAlarms } from './alarms';
 import { initializeNotifications } from './notifications';
-import { canonicalizeCodexUrl } from '../shared/url';
+import { isMainCodexListingUrl } from '../shared/url';
 import { initializeSettingsController } from './settings-controller';
 
 const VERBOSE_KEY = 'codex.tasks.verbose';
@@ -60,8 +60,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (!changeInfo.url) {
     return;
   }
-  const canonical = canonicalizeCodexUrl(changeInfo.url);
-  if (canonical?.isTasksListing || canonical?.isTaskDetails) {
+  if (isMainCodexListingUrl(changeInfo.url)) {
     return;
   }
   void aggregator.handleTabNavigated(tabId).catch((error) => {
