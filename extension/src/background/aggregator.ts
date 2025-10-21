@@ -26,6 +26,7 @@ type AggregatedDebounceState = AggregatedTabsStateDebounceState;
 const FALLBACK_DEBOUNCE_MS = SETTINGS_DEFAULTS.debounceMs;
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 5_000;
 const HEARTBEAT_STALE_MULTIPLIER = 3;
+const HEARTBEAT_STALE_MIN_THRESHOLD_MS = 60_000;
 const STORAGE_KEY = getSessionStateKey();
 const MAX_WRITE_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 1_000;
@@ -349,7 +350,10 @@ class BackgroundAggregatorImpl implements BackgroundAggregator {
         const now = this.now();
         for (const [tabKey, tab] of Object.entries(next.tabs)) {
           const { heartbeat } = tab;
-          const threshold = heartbeat.expectedIntervalMs * HEARTBEAT_STALE_MULTIPLIER;
+          const threshold = Math.max(
+            HEARTBEAT_STALE_MIN_THRESHOLD_MS,
+            heartbeat.expectedIntervalMs * HEARTBEAT_STALE_MULTIPLIER,
+          );
           if (now - heartbeat.lastReceivedAt >= threshold) {
             staleTabIds.push(Number(tabKey));
             heartbeat.status = 'STALE';

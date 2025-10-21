@@ -431,13 +431,37 @@ describe('BackgroundAggregator', () => {
     };
     await aggregator.handleHeartbeat(heartbeat, sender);
 
-    currentTime = 31_000; // 3 * interval + 1s
+    currentTime = 61_000; // threshold is max(60s, 3 * interval)
     const stale = await aggregator.evaluateHeartbeatStatuses();
     expect(stale).toEqual([11]);
 
     const snapshot = await aggregator.getSnapshot();
     expect(snapshot.tabs['11'].heartbeat.status).toBe('STALE');
     expect(snapshot.tabs['11'].heartbeat.missedCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it('does not mark heartbeat as stale before minimum threshold', async () => {
+    let currentTime = 0;
+    const { aggregator } = createAggregatorInstance({ now: () => currentTime });
+    await aggregator.ready;
+
+    const sender = { tab: { id: 12, title: 'Codex' } } as chrome.runtime.MessageSender;
+    const heartbeat: ContentScriptHeartbeat = {
+      type: 'TASKS_HEARTBEAT',
+      origin: 'https://chatgpt.com/codex',
+      ts: 0,
+      lastUpdateTs: 0,
+      intervalMs: 5_000,
+    };
+    await aggregator.handleHeartbeat(heartbeat, sender);
+
+    currentTime = 45_000; // greater than 3 * interval but below minimum threshold
+    const stale = await aggregator.evaluateHeartbeatStatuses();
+    expect(stale).toEqual([]);
+
+    const snapshot = await aggregator.getSnapshot();
+    expect(snapshot.tabs['12'].heartbeat.status).toBe('OK');
+    expect(snapshot.tabs['12'].heartbeat.missedCount).toBe(0);
   });
 
   it('clears debounce window when state remains idle', async () => {
