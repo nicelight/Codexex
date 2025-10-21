@@ -154,7 +154,7 @@ describe('BackgroundAggregator', () => {
     expect(snapshot.lastTotal).toBe(4);
   });
 
-  it('prefers task detail totals when both listing and details are present', async () => {
+  it('prefers Codex root listing totals when both listing and details are present', async () => {
     const { aggregator } = createAggregatorInstance();
     await aggregator.ready;
 
@@ -185,7 +185,7 @@ describe('BackgroundAggregator', () => {
     await aggregator.handleTasksUpdate(detailMessage, detailSender);
 
     const snapshot = await aggregator.getSnapshot();
-    expect(snapshot.lastTotal).toBe(5);
+    expect(snapshot.lastTotal).toBe(2);
   });
 
   it('removes tab state when tasks update originates outside Codex', async () => {
@@ -381,7 +381,7 @@ describe('BackgroundAggregator', () => {
     await aggregator.ready;
 
     const snapshot = await aggregator.getSnapshot();
-    expect(snapshot.lastTotal).toBe(5);
+    expect(snapshot.lastTotal).toBe(3);
     expect(snapshot.tabs['10']?.count).toBe(3);
     expect(snapshot.tabs['11']?.count).toBe(5);
   });

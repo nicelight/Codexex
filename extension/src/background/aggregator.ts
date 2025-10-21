@@ -741,6 +741,7 @@ function cloneState(state: AggregatedTabsState): AggregatedTabsState {
 
 function deriveAggregatedTotal(tabs: Record<string, AggregatedTabState>): number {
   const listingGroups = new Map<string, number>();
+  let primaryListingCount: number | null = null;
   let taskDetailsCount = 0;
   let hasTaskDetails = false;
   let fallbackTotal = 0;
@@ -752,6 +753,9 @@ function deriveAggregatedTotal(tabs: Record<string, AggregatedTabState>): number
       const previous = listingGroups.get(key) ?? 0;
       const next = tab.count > previous ? tab.count : previous;
       listingGroups.set(key, next);
+      if (canonical.normalizedPathname === '/codex') {
+        primaryListingCount = primaryListingCount === null ? next : Math.max(primaryListingCount, next);
+      }
       continue;
     }
     if (canonical?.isTaskDetails) {
@@ -762,16 +766,19 @@ function deriveAggregatedTotal(tabs: Record<string, AggregatedTabState>): number
     fallbackTotal += tab.count;
   }
 
-  if (hasTaskDetails) {
-    return taskDetailsCount;
-  }
-
   if (listingGroups.size > 0) {
+    if (primaryListingCount !== null) {
+      return primaryListingCount;
+    }
     let total = 0;
     for (const count of listingGroups.values()) {
       total += count;
     }
     return total;
+  }
+
+  if (hasTaskDetails) {
+    return taskDetailsCount;
   }
 
   return fallbackTotal;
