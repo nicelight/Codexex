@@ -25,7 +25,10 @@ export class ContentAudioController {
   private audioContext?: AudioContext;
   private gainNode?: GainNode;
   private audioBuffer?: AudioBuffer;
+  private keepAliveSource?: ConstantSourceNode | OscillatorNode;
+  private keepAliveGain?: GainNode;
   private pending = false;
+  private pendingVolume: number | undefined;
   private unlocked = false;
   private initialized = false;
   private unlockListenersAttached = false;
@@ -58,7 +61,21 @@ export class ContentAudioController {
       return;
     }
     if (this.unlocked) {
-      await this.resumeContextIfNeeded();
+      const resumed = await this.resumeContextIfNeeded();
+      if (!resumed) {
+        this.setPending(this.pendingVolume);
+        return;
+      }
+      this.ensureKeepAlive();
+      if (this.pending) {
+        await this.ensureAudioBuffer();
+        const played = await this.playChime(this.pendingVolume);
+        if (played) {
+          this.clearPending();
+        } else {
+          this.setPending(this.pendingVolume);
+        }
+      }
       return;
     }
     try {
@@ -68,11 +85,20 @@ export class ContentAudioController {
       this.gainNode.connect(this.audioContext.destination);
       this.unlocked = true;
       this.unlockListenersAttached = false;
-      await this.resumeContextIfNeeded();
+      const resumed = await this.resumeContextIfNeeded();
+      if (!resumed) {
+        this.setPending(this.pendingVolume);
+        return;
+      }
+      this.ensureKeepAlive();
       if (this.pending) {
-        this.pending = false;
         await this.ensureAudioBuffer();
-        await this.playChime();
+        const played = await this.playChime(this.pendingVolume);
+        if (played) {
+          this.clearPending();
+        } else {
+          this.setPending(this.pendingVolume);
+        }
       }
     } catch (error) {
       this.logger.warn('audio unlock failed', error);
@@ -91,21 +117,35 @@ export class ContentAudioController {
 
   public async handleChimeRequest(volumeOverride?: number): Promise<void> {
     if (!this.enabled) {
-      this.pending = false;
+      this.clearPending();
       return;
     }
+    const requestedVolume =
+      typeof volumeOverride === 'number' && Number.isFinite(volumeOverride) ? volumeOverride : undefined;
     if (!this.unlocked) {
-      this.pending = true;
-      this.attachUnlockListeners();
+      this.setPending(requestedVolume);
       return;
     }
-    await this.resumeContextIfNeeded();
+    const resumed = await this.resumeContextIfNeeded();
+    if (!resumed) {
+      this.setPending(requestedVolume);
+      return;
+    }
     await this.ensureAudioBuffer();
-    await this.playChime(volumeOverride);
+    const played = await this.playChime(requestedVolume);
+    if (!played) {
+      if (clampVolume(requestedVolume ?? this.volume) > 0) {
+        this.setPending(requestedVolume);
+      } else {
+        this.clearPending();
+      }
+      return;
+    }
+    this.clearPending();
   }
 
   private attachUnlockListeners(): void {
-    if (this.unlocked || this.unlockListenersAttached) {
+    if (this.unlockListenersAttached) {
       return;
     }
     this.unlockListenersAttached = true;
@@ -122,17 +162,20 @@ export class ContentAudioController {
     this.unlockListenersAttached = false;
   }
 
-  private async resumeContextIfNeeded(): Promise<void> {
+  private async resumeContextIfNeeded(): Promise<boolean> {
     if (!this.audioContext) {
-      return;
+      return false;
     }
     if (this.audioContext.state === 'suspended') {
       try {
         await this.audioContext.resume();
+        return true;
       } catch (error) {
         this.logger.debug('audio resume failed', error);
+        return false;
       }
     }
+    return true;
   }
 
   private async ensureAudioBuffer(): Promise<void> {
@@ -167,25 +210,26 @@ export class ContentAudioController {
     return undefined;
   }
 
-  private async playChime(volumeOverride?: number): Promise<void> {
+  private async playChime(volumeOverride?: number): Promise<boolean> {
     if (!this.audioContext || !this.gainNode) {
-      this.pending = true;
-      return;
+      return false;
     }
-    const gain = clampVolume(typeof volumeOverride === 'number' ? volumeOverride : this.volume);
+    const gain = clampVolume(
+      typeof volumeOverride === 'number' && Number.isFinite(volumeOverride) ? volumeOverride : this.volume,
+    );
     if (gain <= 0) {
-      return;
+      return false;
     }
     if (this.audioBuffer) {
       this.playBuffer(gain);
-      return;
+      return true;
     }
     this.playOscillator(gain);
+    return true;
   }
 
   private playBuffer(gain: number): void {
     if (!this.audioContext || !this.gainNode || !this.audioBuffer) {
-      this.pending = true;
       return;
     }
     const context = this.audioContext;
@@ -202,7 +246,6 @@ export class ContentAudioController {
 
   private playOscillator(gain: number): void {
     if (!this.audioContext || !this.gainNode) {
-      this.pending = true;
       return;
     }
     const context = this.audioContext;
@@ -216,6 +259,57 @@ export class ContentAudioController {
     oscillator.addEventListener('ended', () => {
       oscillator.disconnect();
     });
+  }
+
+  private setPending(volume?: number): void {
+    this.pending = true;
+    this.pendingVolume =
+      typeof volume === 'number' && Number.isFinite(volume) ? clampVolume(volume) : undefined;
+    this.attachUnlockListeners();
+  }
+
+  private clearPending(): void {
+    this.pending = false;
+    this.pendingVolume = undefined;
+  }
+
+  private ensureKeepAlive(): void {
+    if (!this.audioContext || this.keepAliveSource || typeof this.audioContext.createGain !== 'function') {
+      return;
+    }
+
+    const context = this.audioContext;
+
+    if (typeof (context as AudioContext & { createConstantSource?: () => ConstantSourceNode }).createConstantSource === 'function') {
+      try {
+        const gain = context.createGain();
+        gain.gain.value = 0;
+        gain.connect(context.destination);
+        const source = context.createConstantSource();
+        source.offset.value = 0;
+        source.connect(gain);
+        source.start(context.currentTime);
+        this.keepAliveGain = gain;
+        this.keepAliveSource = source;
+        return;
+      } catch (error) {
+        this.logger.debug('keep-alive constant source failed', error);
+      }
+    }
+
+    try {
+      const gain = context.createGain();
+      gain.gain.value = 0;
+      gain.connect(context.destination);
+      const oscillator = context.createOscillator();
+      oscillator.frequency.value = 0;
+      oscillator.connect(gain);
+      oscillator.start(context.currentTime);
+      this.keepAliveGain = gain;
+      this.keepAliveSource = oscillator;
+    } catch (error) {
+      this.logger.debug('keep-alive oscillator failed', error);
+    }
   }
 }
 

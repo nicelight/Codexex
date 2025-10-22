@@ -25,12 +25,22 @@ class FakeOscillatorNode {
   addEventListener = vi.fn((_: string, cb?: () => void) => cb && cb());
 }
 
+class FakeConstantSourceNode {
+  public offset = { value: 0 };
+  connect = vi.fn();
+  disconnect = vi.fn();
+  start = vi.fn();
+  stop = vi.fn();
+  addEventListener = vi.fn((_: string, cb?: () => void) => cb && cb());
+}
+
 class FakeAudioContext {
   public state: AudioContextState = "running";
   public currentTime = 0;
   public destination = {};
   createGain = vi.fn(() => new FakeGainNode());
   createOscillator = vi.fn(() => new FakeOscillatorNode());
+  createConstantSource = vi.fn(() => new FakeConstantSourceNode());
   createBufferSource = vi.fn(() => ({
     connect: vi.fn(),
     disconnect: vi.fn(),
@@ -61,6 +71,7 @@ describe("ContentAudioController", () => {
     setChromeInstance(undefined);
     globalThis.AudioContext = originalAudioContext;
     globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
   });
 
   test("queues playback until unlocked", async () => {
@@ -92,5 +103,48 @@ describe("ContentAudioController", () => {
     await controller.handleChimeRequest();
 
     expect(contextInstance.resume).toHaveBeenCalled();
+  });
+
+  test("reattaches unlock listeners when resume is blocked", async () => {
+    const addEventListenerSpy = vi.spyOn(window, "addEventListener");
+    const removeEventListenerSpy = vi.spyOn(window, "removeEventListener");
+    const controller = new ContentAudioController({
+      window,
+      logger: console,
+    } as any);
+
+    await (controller as any).unlock?.();
+
+    addEventListenerSpy.mockClear();
+    removeEventListenerSpy.mockClear();
+
+    const contextInstance = (controller as any).audioContext as FakeAudioContext;
+    contextInstance.state = "suspended";
+    (contextInstance.resume as ReturnType<typeof vi.fn>).mockImplementationOnce(() =>
+      Promise.reject(new Error("blocked")),
+    );
+
+    await controller.handleChimeRequest();
+
+    expect(contextInstance.resume).toHaveBeenCalled();
+    expect(addEventListenerSpy).toHaveBeenCalledWith("pointerdown", expect.any(Function), { capture: true });
+    expect(addEventListenerSpy).toHaveBeenCalledWith("keydown", expect.any(Function), { capture: true });
+    expect(removeEventListenerSpy).not.toHaveBeenCalled();
+    expect((controller as any).pending).toBe(true);
+  });
+
+  test("starts keep-alive source after successful unlock", async () => {
+    const controller = new ContentAudioController({
+      window,
+      logger: console,
+    } as any);
+
+    await (controller as any).unlock?.();
+
+    const contextInstance = (controller as any).audioContext as FakeAudioContext;
+    expect(contextInstance.createConstantSource).toHaveBeenCalled();
+    const sourceInstance = contextInstance.createConstantSource.mock.results[0]
+      .value as FakeConstantSourceNode;
+    expect(sourceInstance.start).toHaveBeenCalled();
   });
 });
