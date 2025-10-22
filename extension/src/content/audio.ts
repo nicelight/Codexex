@@ -25,6 +25,8 @@ export class ContentAudioController {
   private audioContext?: AudioContext;
   private gainNode?: GainNode;
   private audioBuffer?: AudioBuffer;
+  private keepAliveSource?: ConstantSourceNode | OscillatorNode;
+  private keepAliveGain?: GainNode;
   private pending = false;
   private pendingVolume: number | undefined;
   private unlocked = false;
@@ -64,6 +66,7 @@ export class ContentAudioController {
         this.setPending(this.pendingVolume);
         return;
       }
+      this.ensureKeepAlive();
       if (this.pending) {
         await this.ensureAudioBuffer();
         const played = await this.playChime(this.pendingVolume);
@@ -87,6 +90,7 @@ export class ContentAudioController {
         this.setPending(this.pendingVolume);
         return;
       }
+      this.ensureKeepAlive();
       if (this.pending) {
         await this.ensureAudioBuffer();
         const played = await this.playChime(this.pendingVolume);
@@ -267,6 +271,45 @@ export class ContentAudioController {
   private clearPending(): void {
     this.pending = false;
     this.pendingVolume = undefined;
+  }
+
+  private ensureKeepAlive(): void {
+    if (!this.audioContext || this.keepAliveSource || typeof this.audioContext.createGain !== 'function') {
+      return;
+    }
+
+    const context = this.audioContext;
+
+    if (typeof (context as AudioContext & { createConstantSource?: () => ConstantSourceNode }).createConstantSource === 'function') {
+      try {
+        const gain = context.createGain();
+        gain.gain.value = 0;
+        gain.connect(context.destination);
+        const source = context.createConstantSource();
+        source.offset.value = 0;
+        source.connect(gain);
+        source.start(context.currentTime);
+        this.keepAliveGain = gain;
+        this.keepAliveSource = source;
+        return;
+      } catch (error) {
+        this.logger.debug('keep-alive constant source failed', error);
+      }
+    }
+
+    try {
+      const gain = context.createGain();
+      gain.gain.value = 0;
+      gain.connect(context.destination);
+      const oscillator = context.createOscillator();
+      oscillator.frequency.value = 0;
+      oscillator.connect(gain);
+      oscillator.start(context.currentTime);
+      this.keepAliveGain = gain;
+      this.keepAliveSource = oscillator;
+    } catch (error) {
+      this.logger.debug('keep-alive oscillator failed', error);
+    }
   }
 }
 
