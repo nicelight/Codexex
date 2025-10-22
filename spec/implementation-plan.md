@@ -79,7 +79,7 @@
 - Derive badge text/color from AggregatedState.lastTotal; throttle updates to <=4 Hz.
 - Ensure controller exposes pure helpers for unit tests and degrades gracefully when chrome.action is missing.
 ### Audio completion cue (v0.1.x)
-- ���������������� ��������������� � background (Web Audio API, OffscreenCanvas �� ���������).
-- Popup ���������� POPUP_ACTIVATE_AUDIO, �������� AudioContext � ������������� gain/gain envelope.
-- ���������� ������� ��������� ���������� � ������������� ������ (mp3/����������) ��� �������� �������� �� >0 � 0.
-- ����������� ����������� ����� ��� ������� �������� ��������� � ����������.
+- Контент-скрипт создаёт скрытый `<audio>` в DOM и управляет его громкостью/мьютом на основании настроек.
+- Background AudioTrigger рассылает `AUDIO_SETTINGS_UPDATE` и `AUDIO_CHIME` во все активные вкладки и runtime.
+- Контроллер контент-скрипта откладывает воспроизведение до разблокировки автоплея пользовательским жестом и повторяет попытку при отказе.
+- Покрыть unit-тестами создание элемента, применение настроек и обработку очереди воспроизведения.

@@ -157,5 +157,6 @@
   - [ ] Implement chrome.action badge/controller per spec/action-indicator.md.
   - [ ] Update popup/manual documentation after verifying UX.
 - [ ] Audio completion cue (v0.1.x)
-  - [ ] ����������� Web Audio ���������� � ��������� POPUP_ACTIVATE_AUDIO.
-  - [ ] �������� ��������/������ (docs) � ������� ������� ������� >0 -> 0.
+  - [ ] Зафиксировать поведение скрытого `<audio>`-элемента в контент-скрипте (подключение источника, aria-атрибуты, стили).
+  - [ ] Протестировать обработку отказов `play()` и повторное воспроизведение после разблокировки автоплея.
+  - [ ] Обновить документацию/тест-план по сценариям `AUDIO_CHIME` и синхронизации настроек.
