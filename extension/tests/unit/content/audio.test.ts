@@ -3,67 +3,43 @@ import { ContentAudioController } from "../../../src/content/audio";
 import { createMockChrome, setChromeInstance } from "../../../src/shared/chrome";
 
 let chromeMock: ReturnType<typeof createMockChrome>;
+let createdAudio!: HTMLAudioElement & {
+  play: ReturnType<typeof vi.fn>;
+  pause: ReturnType<typeof vi.fn>;
+  load: ReturnType<typeof vi.fn>;
+  addEventListener: ReturnType<typeof vi.fn>;
+};
 
-class FakeGainNode {
-  public gain = {
-    value: 0,
-    cancelScheduledValues: vi.fn(),
-    setValueAtTime: vi.fn(),
-    linearRampToValueAtTime: vi.fn(),
-  };
-  connect = vi.fn();
-  disconnect = vi.fn();
-}
-
-class FakeOscillatorNode {
-  public type = "sine";
-  public frequency = { value: 0 };
-  connect = vi.fn();
-  disconnect = vi.fn();
-  start = vi.fn();
-  stop = vi.fn();
-  addEventListener = vi.fn((_: string, cb?: () => void) => cb && cb());
-}
-
-class FakeAudioContext {
-  public state: AudioContextState = "running";
-  public currentTime = 0;
-  public destination = {};
-  createGain = vi.fn(() => new FakeGainNode());
-  createOscillator = vi.fn(() => new FakeOscillatorNode());
-  createBufferSource = vi.fn(() => ({
-    connect: vi.fn(),
-    disconnect: vi.fn(),
-    start: vi.fn(),
-    stop: vi.fn(),
-    addEventListener: vi.fn((_: string, cb?: () => void) => cb && cb()),
-  }));
-  resume = vi.fn(() => Promise.resolve());
-  decodeAudioData = vi.fn(() => Promise.reject(new Error("decode disabled")));
-}
+const originalCreateElement = document.createElement.bind(document);
 
 describe("ContentAudioController", () => {
-  const originalAudioContext = globalThis.AudioContext;
-  const originalFetch = globalThis.fetch;
-
   beforeEach(() => {
     chromeMock = createMockChrome();
     chromeMock.runtime.getURL = (path: string) => path;
     setChromeInstance(chromeMock);
-    globalThis.AudioContext = FakeAudioContext as unknown as typeof AudioContext;
-    globalThis.fetch = vi.fn(async () => ({
-      ok: false,
-      arrayBuffer: async () => new ArrayBuffer(0),
-    })) as unknown as typeof fetch;
+    vi.spyOn(document, "createElement").mockImplementation(((tagName: string) => {
+      if (tagName.toLowerCase() === "audio") {
+        const element = originalCreateElement(tagName) as HTMLAudioElement;
+        element.play = vi.fn(async () => {}) as unknown as HTMLAudioElement["play"];
+        element.pause = vi.fn() as unknown as HTMLAudioElement["pause"];
+        element.load = vi.fn() as unknown as HTMLAudioElement["load"];
+        element.addEventListener = vi.fn();
+        createdAudio = element as typeof createdAudio;
+        return element;
+      }
+      return originalCreateElement(tagName);
+    }) as typeof document.createElement);
   });
 
   afterEach(() => {
     setChromeInstance(undefined);
-    globalThis.AudioContext = originalAudioContext;
-    globalThis.fetch = originalFetch;
+    if (createdAudio && createdAudio.parentNode) {
+      createdAudio.parentNode.removeChild(createdAudio);
+    }
+    vi.restoreAllMocks();
   });
 
-  test("queues playback until unlocked", async () => {
+  test("plays pending chime after unlock", async () => {
     const controller = new ContentAudioController({
       window,
       logger: console,
@@ -72,13 +48,43 @@ describe("ContentAudioController", () => {
     await controller.handleChimeRequest();
 
     await (controller as any).unlock?.();
-    await controller.handleChimeRequest();
 
-    const contextInstance = (controller as any).audioContext as FakeAudioContext;
-    expect(contextInstance.createOscillator).toHaveBeenCalled();
+    expect(createdAudio.play).toHaveBeenCalledTimes(2);
+    expect(createdAudio.pause).toHaveBeenCalledTimes(1);
+    expect(createdAudio.volume).toBeCloseTo(0.2, 5);
+    expect((controller as any).pending).toBe(false);
   });
 
-  test("resumes suspended context before playback", async () => {
+  test("reattaches unlock listeners when priming playback is blocked", async () => {
+    const addEventListenerSpy = vi.spyOn(window, "addEventListener");
+    const removeEventListenerSpy = vi.spyOn(window, "removeEventListener");
+
+    const controller = new ContentAudioController({
+      window,
+      logger: console,
+    } as any);
+
+    await controller.handleChimeRequest();
+    (controller as any).ensureAudioElement?.();
+
+    (createdAudio.play as ReturnType<typeof vi.fn>).mockImplementationOnce(() =>
+      Promise.reject(new Error("blocked")),
+    );
+
+    addEventListenerSpy.mockClear();
+    removeEventListenerSpy.mockClear();
+
+    await (controller as any).unlock?.();
+
+    expect(removeEventListenerSpy).toHaveBeenCalledWith("pointerdown", expect.any(Function), true);
+    expect(removeEventListenerSpy).toHaveBeenCalledWith("keydown", expect.any(Function), true);
+    expect(addEventListenerSpy).toHaveBeenCalledWith("pointerdown", expect.any(Function), { capture: true });
+    expect(addEventListenerSpy).toHaveBeenCalledWith("keydown", expect.any(Function), { capture: true });
+    expect((controller as any).pending).toBe(true);
+    expect((controller as any).unlocked).toBe(false);
+  });
+
+  test("updates audio element volume when settings change", async () => {
     const controller = new ContentAudioController({
       window,
       logger: console,
@@ -86,11 +92,8 @@ describe("ContentAudioController", () => {
 
     await (controller as any).unlock?.();
 
-    const contextInstance = (controller as any).audioContext as FakeAudioContext;
-    contextInstance.state = "suspended";
+    controller.applySettings({ soundVolume: 0.75 });
 
-    await controller.handleChimeRequest();
-
-    expect(contextInstance.resume).toHaveBeenCalled();
+    expect(createdAudio.volume).toBeCloseTo(0.75, 5);
   });
 });

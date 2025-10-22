@@ -1,17 +1,7 @@
 import { resolveChrome, type ChromeLogger, createChildLogger } from '../shared/chrome';
 
-type AudioContextConstructor = typeof globalThis.AudioContext;
-
-interface AudioCapableWindow extends Window {
-  AudioContext?: AudioContextConstructor;
-  webkitAudioContext?: AudioContextConstructor;
-}
-
 const AUDIO_RESOURCE = 'media/oh-oh-icq-sound.mp3';
 const DEFAULT_VOLUME = 0.2;
-const ATTACK_TIME = 0.02;
-const RELEASE_TIME = 0.35;
-const FALLBACK_FREQUENCY = 880;
 
 export interface ContentAudioControllerOptions {
   readonly window: Window;
@@ -19,13 +9,12 @@ export interface ContentAudioControllerOptions {
 }
 
 export class ContentAudioController {
-  private readonly window: AudioCapableWindow;
+  private readonly window: Window;
   private readonly logger: ChromeLogger;
   private readonly chrome = resolveChrome();
-  private audioContext?: AudioContext;
-  private gainNode?: GainNode;
-  private audioBuffer?: AudioBuffer;
+  private audioElement?: HTMLAudioElement;
   private pending = false;
+  private pendingVolume: number | undefined;
   private unlocked = false;
   private initialized = false;
   private unlockListenersAttached = false;
@@ -34,7 +23,7 @@ export class ContentAudioController {
   private enabled = true;
 
   constructor(options: ContentAudioControllerOptions) {
-    this.window = options.window as AudioCapableWindow;
+    this.window = options.window;
     this.logger = createChildLogger(options.logger, 'audio');
     this.unlockEventHandler = () => {
       this.detachUnlockListeners();
@@ -53,26 +42,50 @@ export class ContentAudioController {
 
   private async unlock(): Promise<void> {
     this.detachUnlockListeners();
-    const AudioContextCtor = this.window.AudioContext ?? this.window.webkitAudioContext;
-    if (!AudioContextCtor) {
-      return;
-    }
     if (this.unlocked) {
-      await this.resumeContextIfNeeded();
+      const element = this.ensureAudioElement();
+      if (!element) {
+        this.setPending(this.pendingVolume);
+        return;
+      }
+      if (this.pending) {
+        const played = await this.playChime(this.pendingVolume);
+        if (played) {
+          this.clearPending();
+        } else {
+          this.setPending(this.pendingVolume);
+        }
+      }
       return;
     }
     try {
-      this.audioContext = new AudioContextCtor();
-      this.gainNode = this.audioContext.createGain();
-      this.gainNode.gain.value = 0;
-      this.gainNode.connect(this.audioContext.destination);
+      const element = this.ensureAudioElement();
+      if (!element) {
+        this.attachUnlockListeners();
+        this.setPending(this.pendingVolume);
+        return;
+      }
+      const originalVolume = element.volume;
+      element.volume = 0;
+      const played = await this.playElement(element);
+      if (!played) {
+        element.volume = originalVolume;
+        this.attachUnlockListeners();
+        this.setPending(this.pendingVolume);
+        return;
+      }
+      element.pause();
+      element.currentTime = 0;
+      element.volume = clampVolume(this.volume);
       this.unlocked = true;
       this.unlockListenersAttached = false;
-      await this.resumeContextIfNeeded();
       if (this.pending) {
-        this.pending = false;
-        await this.ensureAudioBuffer();
-        await this.playChime();
+        const played = await this.playChime(this.pendingVolume);
+        if (played) {
+          this.clearPending();
+        } else {
+          this.setPending(this.pendingVolume);
+        }
       }
     } catch (error) {
       this.logger.warn('audio unlock failed', error);
@@ -86,26 +99,37 @@ export class ContentAudioController {
     }
     if (typeof settings.soundVolume === 'number') {
       this.volume = clampVolume(settings.soundVolume);
+      if (this.audioElement) {
+        this.audioElement.volume = this.volume;
+      }
     }
   }
 
   public async handleChimeRequest(volumeOverride?: number): Promise<void> {
     if (!this.enabled) {
-      this.pending = false;
+      this.clearPending();
       return;
     }
+    const requestedVolume =
+      typeof volumeOverride === 'number' && Number.isFinite(volumeOverride) ? volumeOverride : undefined;
     if (!this.unlocked) {
-      this.pending = true;
-      this.attachUnlockListeners();
+      this.setPending(requestedVolume);
       return;
     }
-    await this.resumeContextIfNeeded();
-    await this.ensureAudioBuffer();
-    await this.playChime(volumeOverride);
+    const played = await this.playChime(requestedVolume);
+    if (!played) {
+      if (clampVolume(requestedVolume ?? this.volume) > 0) {
+        this.setPending(requestedVolume);
+      } else {
+        this.clearPending();
+      }
+      return;
+    }
+    this.clearPending();
   }
 
   private attachUnlockListeners(): void {
-    if (this.unlocked || this.unlockListenersAttached) {
+    if (this.unlockListenersAttached) {
       return;
     }
     this.unlockListenersAttached = true;
@@ -122,110 +146,91 @@ export class ContentAudioController {
     this.unlockListenersAttached = false;
   }
 
-  private async resumeContextIfNeeded(): Promise<void> {
-    if (!this.audioContext) {
-      return;
+  private async playChime(volumeOverride?: number): Promise<boolean> {
+    const element = this.ensureAudioElement();
+    if (!element) {
+      return false;
     }
-    if (this.audioContext.state === 'suspended') {
-      try {
-        await this.audioContext.resume();
-      } catch (error) {
-        this.logger.debug('audio resume failed', error);
-      }
+    const gain = clampVolume(
+      typeof volumeOverride === 'number' && Number.isFinite(volumeOverride) ? volumeOverride : this.volume,
+    );
+    if (gain <= 0) {
+      return false;
     }
+    element.volume = gain;
+    element.currentTime = 0;
+    const played = await this.playElement(element);
+    if (!played) {
+      return false;
+    }
+    return true;
   }
 
-  private async ensureAudioBuffer(): Promise<void> {
-    if (this.audioBuffer || !this.audioContext) {
-      return;
-    }
-    const getUrl = this.chrome.runtime.getURL?.bind(this.chrome.runtime);
-    if (!getUrl) {
-      this.logger.debug('audio buffer load skipped: runtime.getURL unavailable');
-      return;
-    }
-    const url = getUrl(AUDIO_RESOURCE);
-    try {
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`fetch status ${response.status}`);
-      }
-      const buffer = await response.arrayBuffer();
-      this.audioBuffer = await this.decodeAudioData(buffer);
-    } catch (error) {
-      this.logger.debug('audio buffer load failed', error);
-    }
+  private setPending(volume?: number): void {
+    this.pending = true;
+    this.pendingVolume =
+      typeof volume === 'number' && Number.isFinite(volume) ? clampVolume(volume) : undefined;
+    this.attachUnlockListeners();
   }
 
-  private async decodeAudioData(buffer: ArrayBuffer): Promise<AudioBuffer | undefined> {
-    if (!this.audioContext) {
+  private clearPending(): void {
+    this.pending = false;
+    this.pendingVolume = undefined;
+  }
+
+  private ensureAudioElement(): HTMLAudioElement | undefined {
+    if (this.audioElement) {
+      return this.audioElement;
+    }
+
+    const document = this.window.document;
+    if (!document) {
       return undefined;
     }
-    if (typeof this.audioContext.decodeAudioData === 'function') {
-      return this.audioContext.decodeAudioData(buffer);
-    }
-    return undefined;
-  }
 
-  private async playChime(volumeOverride?: number): Promise<void> {
-    if (!this.audioContext || !this.gainNode) {
-      this.pending = true;
-      return;
+    const getUrl = this.chrome.runtime.getURL?.bind(this.chrome.runtime);
+    if (!getUrl) {
+      this.logger.debug('audio element creation skipped: runtime.getURL unavailable');
+      return undefined;
     }
-    const gain = clampVolume(typeof volumeOverride === 'number' ? volumeOverride : this.volume);
-    if (gain <= 0) {
-      return;
-    }
-    if (this.audioBuffer) {
-      this.playBuffer(gain);
-      return;
-    }
-    this.playOscillator(gain);
-  }
 
-  private playBuffer(gain: number): void {
-    if (!this.audioContext || !this.gainNode || !this.audioBuffer) {
-      this.pending = true;
-      return;
-    }
-    const context = this.audioContext;
-    const source = context.createBufferSource();
-    source.buffer = this.audioBuffer;
-    source.connect(this.gainNode);
-    scheduleEnvelope(context, this.gainNode, gain);
-    source.start(context.currentTime);
-    source.stop(context.currentTime + RELEASE_TIME + 0.1);
-    source.addEventListener('ended', () => {
-      source.disconnect();
+    const element = document.createElement('audio');
+    element.preload = 'auto';
+    element.setAttribute('aria-hidden', 'true');
+    element.tabIndex = -1;
+    element.src = getUrl(AUDIO_RESOURCE);
+    element.volume = clampVolume(this.volume);
+    element.style.display = 'none';
+    element.addEventListener('ended', () => {
+      element.currentTime = 0;
     });
-  }
 
-  private playOscillator(gain: number): void {
-    if (!this.audioContext || !this.gainNode) {
-      this.pending = true;
-      return;
+    const parent = document.body ?? document.documentElement;
+    parent?.appendChild(element);
+
+    try {
+      element.load();
+    } catch (error) {
+      this.logger.debug('audio element preload failed', error);
     }
-    const context = this.audioContext;
-    const oscillator = context.createOscillator();
-    oscillator.type = 'triangle';
-    oscillator.frequency.value = FALLBACK_FREQUENCY;
-    oscillator.connect(this.gainNode);
-    scheduleEnvelope(context, this.gainNode, gain);
-    oscillator.start(context.currentTime);
-    oscillator.stop(context.currentTime + RELEASE_TIME + 0.1);
-    oscillator.addEventListener('ended', () => {
-      oscillator.disconnect();
-    });
-  }
-}
 
-function scheduleEnvelope(context: AudioContext, gain: GainNode, volume: number): void {
-  const now = context.currentTime;
-  gain.gain.cancelScheduledValues(now);
-  const target = clampVolume(volume);
-  gain.gain.setValueAtTime(0, now);
-  gain.gain.linearRampToValueAtTime(target, now + ATTACK_TIME);
-  gain.gain.linearRampToValueAtTime(0, now + ATTACK_TIME + RELEASE_TIME);
+    this.audioElement = element;
+    return element;
+  }
+
+  private async playElement(element: HTMLAudioElement): Promise<boolean> {
+    try {
+      const result = element.play();
+      if (result && typeof result.then === 'function') {
+        await result;
+      }
+      return true;
+    } catch (error) {
+      this.logger.debug('audio playback failed', error);
+      this.attachUnlockListeners();
+      return false;
+    }
+  }
 }
 
 function clampVolume(value: number): number {
